@@ -1,9 +1,10 @@
 # GNNs for Drought - 599 Project
 
 ## Setup
-- Create a virtual environment
+- Create a virtual environment and activate it
     ```
     python -m venv .venv
+    .venv/Scripts/activate
     ```
 - Install requirements
     ```
