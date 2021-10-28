@@ -3,11 +3,16 @@ import pathlib
 import numpy as np
 
 
-def main():
+def load_cds_data():
+	"""
+		Test to load data from the CDS API.
+		You need to create an account and create a .cdsapirc file with your API key 
+		in your home directory.
+		Instructions here: https://cds.climate.copernicus.eu/api-how-to
+	"""
 
 	pathlib.Path("./data").mkdir(parents=True, exist_ok=True)
 
-	# Test downloading some data using their API
 	c = cdsapi.Client()
 
 	c.retrieve(
@@ -41,4 +46,4 @@ def main():
 
 
 if __name__=='__main__':
-	main()
+	load_cds_data()
