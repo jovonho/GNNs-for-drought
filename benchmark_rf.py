@@ -19,17 +19,20 @@ def main():
     # values taken from
     # https://scikit-learn.org/stable/auto_examples/ensemble/plot_random_forest_regression_multioutput.html#sphx-glr-auto-examples-ensemble-plot-random-forest-regression-multioutput-py
     max_depth = 3
+    n_jobs=4 # -1 to use all available cores
     regr_multirf = MultiOutputRegressor(
-        RandomForestRegressor(n_estimators=10, max_depth=max_depth, random_state=0, verbose=2)
+        RandomForestRegressor(n_estimators=10, max_depth=max_depth, random_state=0, verbose=1, n_jobs=n_jobs)
     )
 
     train_x, train_y = train_dataset.load_all_data()
-    print(f"Loaded training data! X: {train_x.shape}, Y: {train_y.shape}. Fitting the model")
+    print(f"Loaded training data! X: {train_x.shape}, Y: {train_y.shape}. Fitting the model") # X: (434, 20475), Y: (434, 1575).
     regr_multirf.fit(train_x, train_y)
 
     print("Finished fitting! Evaluating on the test years")
     test_x, test_y = test_dataset.load_all_data()
     test_preds = regr_multirf.predict(test_x)
+
+    print(test_preds.shape)
 
     print(f"MSE: {mean_squared_error(test_y, test_preds)}")
 
