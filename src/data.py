@@ -1,8 +1,6 @@
 from pathlib import Path
-from numpy.ma.core import concatenate
 import xarray as xr
 import numpy as np
-import pandas as pd
 
 from src.config import DATAFOLDER_PATH, TEST_YEARS, TARGET_DATASET
 
@@ -144,10 +142,8 @@ class Dataset:
             variables = sorted(list(ds.data_vars))
 
             ds_at_timestep = ds.sel(time=timestep)
-
             for data_var in variables:
                 arrays_list.append(ds_at_timestep[data_var].values)
-
         return np.stack(arrays_list, axis=-1)
 
     def load_static_data(self) -> np.ndarray:
