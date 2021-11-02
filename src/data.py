@@ -19,8 +19,8 @@ class Dataset:
         self.data_folder = data_folder
         self.is_test = is_test
 
-        self.dynamic_datasets = self._retreive_dynamic_interim_datasets()
-        self.static_datasets = self._retreive_static_interim_datasets()
+        self.dynamic_datasets = self._retrieve_dynamic_interim_datasets()
+        self.static_datasets = self._retrieve_static_interim_datasets()
 
         self.time_pairs = self.retrieve_date_tuples()
 
@@ -30,7 +30,7 @@ class Dataset:
     def __len__(self) -> int:
         return len(self.time_pairs)
 
-    def _retreive_dynamic_interim_datasets(self) -> List[str]:
+    def _retrieve_dynamic_interim_datasets(self) -> List[str]:
         interim_folder = self.data_folder / "interim"
         foldernames = [x for x in interim_folder.glob("*processed")]
         assert len(foldernames) > 0
@@ -38,7 +38,7 @@ class Dataset:
         # consistent behaviour
         return sorted(foldernames)
 
-    def _retreive_static_interim_datasets(self) -> List[str]:
+    def _retrieve_static_interim_datasets(self) -> List[str]:
         interim_folder = self.data_folder / "interim/static"
         foldernames = [x for x in interim_folder.glob("*processed")]
         assert len(foldernames) > 0
@@ -54,20 +54,73 @@ class Dataset:
         # This will be used to create the training data. Depending on whether
         # this is a test dataloader or not, we want to figure out which dates
         # are relevant to return as np.ndarrays.
-        example_dataset = xr.open_dataset(
-            self.data_folder / "interim" / self.dynamic_datasets[0] / "data_kenya.nc"
-        )
 
-        # we assume all the times in the datasets are the same, and that they
-        # have even gaps
-        times = sorted([x.astype(str) for x in example_dataset.time.values])
+        # We assume all datasets have even gaps.
+        # However, not all datasets cover the same time range
+        # so we need to find the common timerange between all datasets
+        earliest_time = None
+        latest_time = None
+        common = np.array([], dtype=np.datetime64)
 
+        for dataset in self.dynamic_datasets:
+            ds = xr.open_dataset(
+                self.data_folder / "interim" / dataset / "data_kenya.nc"
+            )
+
+            ds_times = np.sort(ds.time.values)
+
+            # Intialize values
+            if not earliest_time:
+                earliest_time = ds_times[0]
+            if not latest_time:
+                latest_time = ds_times[-1]
+            if common.size == 0:
+                common = ds_times
+
+            # Case 1: The current dataset's earliest time is after the common range's start.
+            # Remove all times occuring before this new earliest time from the common timerange.
+            #
+            # ds:             |-----------|
+            # common:       |---------------|
+            # new common:     |-------------|
+            #
+            if ds_times[0] > earliest_time:
+                earliest_time = ds_times[0]
+                common = common[ common >= earliest_time ]
+
+            # Case 2: A dataset's latest time is before the common range's end
+            # Remove all times occuring after this new latest time form the common time range.
+            #
+            # ds:             |-----------|
+            # common:         |-------------|
+            # new common:     |-----------|
+            #
+            if ds_times[-1] < latest_time:
+                latest_time = ds_times[-1]
+                common = common[ common <= latest_time ]
+
+            # Tested with different loading orders and subsets of available datasets.
+            #
+            # The common timerange can only ever be reduced. Increasing it
+            # on either side would mean the dataset you initialized it with did not cover
+            # that same range, and thus it is not actually common to all datasets.
+            #
+            # If we initialize to the dataset with the largest timerange,
+            # we will progressively reduce it as we encounter smaller timeranges on both ends.
+            # If we initilialize to the smallest timerange, we already have the smallest common timerange.
+            # Cases in between are reduced progressively on either sides.
+
+        common = common.astype(str)
         if self.is_test:
-            times = [x for x in times if self._is_test_time(x)]
+            common = [x for x in common if self._is_test_time(x)]
         else:
-            times = [x for x in times if not self._is_test_time(x)]
+            print(f"\nCommon time range of datasets: {common[0]} - {common[-1]}")
+            common = [x for x in common if not self._is_test_time(x)]
 
-        return [(times[idx - 1], times[idx]) for idx in range(1, len(times))]
+        print(f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}")
+        return [(common[idx - 1], common[idx]) for idx in range(1, len(common))]
+
+
 
     def load_target_data_for_timestep(self, timestep: str) -> np.ndarray:
         if self.cached_target_data is None:
