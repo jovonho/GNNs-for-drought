@@ -116,9 +116,7 @@ class Dataset:
             print(f"\nCommon time range of datasets: {common[0]} - {common[-1]}")
             common = [x for x in common if not self._is_test_time(x)]
 
-        print(
-            f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}"
-        )
+        print(f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}")
         return [(common[idx - 1], common[idx]) for idx in range(1, len(common))]
 
     def load_target_data_for_timestep(self, timestep: str) -> np.ndarray:
@@ -177,9 +175,7 @@ class Dataset:
                             variable_std,
                         )
                     mean, std = self.cached_static_means_and_stds[var_label]
-                    normed_var = (
-                        np.nan_to_num(ds[data_var].values, nan=mean) - mean
-                    ) / std
+                    normed_var = (np.nan_to_num(ds[data_var].values, nan=mean) - mean) / std
                     arrays_list.append(normed_var)
             self.cached_static_data = np.stack(arrays_list, axis=-1)
         return self.cached_static_data
