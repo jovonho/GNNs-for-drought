@@ -31,9 +31,8 @@ def main():
     )
 
     train_x, train_y = train_dataset.load_all_data()
-    print(
-        f"\nLoaded training data! X: {train_x.shape}, Y: {train_y.shape}. Fitting the model"
-    )
+    print(f"\nLoaded training data! X: {train_x.shape}, Y: {train_y.shape}. Fitting the model")
+
     regr_multirf.fit(train_x, train_y)
 
     print("Finished fitting! Evaluating on the test years")

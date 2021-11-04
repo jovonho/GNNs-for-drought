@@ -1,0 +1,19 @@
+name: drought-gnn
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.6
+  - black
+  - pytest
+  - pytest-flake8
+  - numpy
+  - xarray
+  - netcdf4
+  - matplotlib
+  - pip
+  - pytorch=1.6.0
+  - tqdm
+  - scikit-learn
+  - pip:
+      - pytorch-lightning==0.7.1

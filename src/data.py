@@ -13,9 +13,7 @@ class Dataset:
     as input to predict VCI at the following timestep
     """
 
-    def __init__(
-        self, data_folder: Path = DATAFOLDER_PATH, is_test: bool = False
-    ) -> None:
+    def __init__(self, data_folder: Path = DATAFOLDER_PATH, is_test: bool = False) -> None:
         self.data_folder = data_folder
         self.is_test = is_test
 
@@ -66,9 +64,7 @@ class Dataset:
         common = np.array([], dtype=np.datetime64)
 
         for dataset in self.dynamic_datasets:
-            ds = xr.open_dataset(
-                self.data_folder / "interim" / dataset / "data_kenya.nc"
-            )
+            ds = xr.open_dataset(self.data_folder / "interim" / dataset / "data_kenya.nc")
 
             ds_times = np.sort(ds.time.values)
 
@@ -110,8 +106,8 @@ class Dataset:
             #
             # If we initialize to the dataset with the largest timerange,
             # we will progressively reduce it as we encounter smaller timeranges on both ends.
-            # If we initilialize to the smallest timerange, we already have the smallest common timerange.
-            # Cases in between are reduced progressively on either sides.
+            # If we initilialize to the smallest timerange, we already have the smallest
+            # common timerange. Cases in between are reduced progressively on either sides.
 
         common = common.astype(str)
         if self.is_test:
@@ -144,9 +140,7 @@ class Dataset:
     def load_dynamic_data_for_timestep(self, timestep: str) -> np.ndarray:
         arrays_list: List[np.ndarray] = []
         for dataset in self.dynamic_datasets:
-            ds = xr.open_dataset(
-                self.data_folder / "interim" / dataset / "data_kenya.nc"
-            )
+            ds = xr.open_dataset(self.data_folder / "interim" / dataset / "data_kenya.nc")
             variables = sorted(list(ds.data_vars))
 
             for data_var in variables:

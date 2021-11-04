@@ -1,6 +1,5 @@
 ﻿import cdsapi
 import pathlib
-import numpy as np
 
 
 def load_cds_data():
