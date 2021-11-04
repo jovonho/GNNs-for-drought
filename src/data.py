@@ -4,7 +4,7 @@ import numpy as np
 
 from src.config import DATAFOLDER_PATH, TEST_YEARS, TARGET_DATASET
 
-from typing import List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 
 
 class Dataset:
@@ -23,6 +23,9 @@ class Dataset:
         self.static_datasets = self._retrieve_static_interim_datasets()
 
         self.time_pairs = self.retrieve_date_tuples()
+
+        self.cached_dynamic_means_and_stds: Dict[str, Tuple[float, float]] = {}
+        self.cached_static_means_and_stds: Dict[str, Tuple[float, float]] = {}
 
         self.cached_static_data: Optional[np.ndarray] = None
         self.cached_target_data: Optional[xr.Dataset] = None
@@ -86,7 +89,7 @@ class Dataset:
             #
             if ds_times[0] > earliest_time:
                 earliest_time = ds_times[0]
-                common = common[ common >= earliest_time ]
+                common = common[common >= earliest_time]
 
             # Case 2: A dataset's latest time is before the common range's end
             # Remove all times occuring after this new latest time form the common time range.
@@ -97,7 +100,7 @@ class Dataset:
             #
             if ds_times[-1] < latest_time:
                 latest_time = ds_times[-1]
-                common = common[ common <= latest_time ]
+                common = common[common <= latest_time]
 
             # Tested with different loading orders and subsets of available datasets.
             #
@@ -117,10 +120,10 @@ class Dataset:
             print(f"\nCommon time range of datasets: {common[0]} - {common[-1]}")
             common = [x for x in common if not self._is_test_time(x)]
 
-        print(f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}")
+        print(
+            f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}"
+        )
         return [(common[idx - 1], common[idx]) for idx in range(1, len(common))]
-
-
 
     def load_target_data_for_timestep(self, timestep: str) -> np.ndarray:
         if self.cached_target_data is None:
@@ -133,6 +136,11 @@ class Dataset:
 
         return self.cached_target_data.sel(time=timestep)[data_vars[0]].values
 
+    @staticmethod
+    def _fill_nan(array: np.ndarray) -> np.ndarray:
+        mean = np.nanmean(array)
+        return np.nan_to_num(array, mean)
+
     def load_dynamic_data_for_timestep(self, timestep: str) -> np.ndarray:
         arrays_list: List[np.ndarray] = []
         for dataset in self.dynamic_datasets:
@@ -141,9 +149,19 @@ class Dataset:
             )
             variables = sorted(list(ds.data_vars))
 
-            ds_at_timestep = ds.sel(time=timestep)
             for data_var in variables:
-                arrays_list.append(ds_at_timestep[data_var].values)
+                variable = ds[data_var]
+                var_label = f"{dataset}_{data_var}"
+                if var_label not in self.cached_dynamic_means_and_stds:
+                    variable_mean = np.nanmean(variable)
+                    variable_std = np.nanstd(variable)
+                    self.cached_dynamic_means_and_stds[var_label] = (
+                        variable_mean,
+                        variable_std,
+                    )
+                mean, std = self.cached_dynamic_means_and_stds[var_label]
+                var_at_ts = np.nan_to_num(variable.sel(time=timestep).values, nan=mean)
+                arrays_list.append((var_at_ts - mean) / std)
         return np.stack(arrays_list, axis=-1)
 
     def load_static_data(self) -> np.ndarray:
@@ -156,7 +174,19 @@ class Dataset:
                 )
                 variables = sorted(list(ds.data_vars))
                 for data_var in variables:
-                    arrays_list.append(ds[data_var].values)
+                    var_label = f"{dataset}_{data_var}"
+                    if var_label not in self.cached_static_means_and_stds:
+                        variable_mean = np.nanmean(ds[data_var].values)
+                        variable_std = np.nanstd(ds[data_var].values)
+                        self.cached_static_means_and_stds[var_label] = (
+                            variable_mean,
+                            variable_std,
+                        )
+                    mean, std = self.cached_static_means_and_stds[var_label]
+                    normed_var = (
+                        np.nan_to_num(ds[data_var].values, nan=mean) - mean
+                    ) / std
+                    arrays_list.append(normed_var)
             self.cached_static_data = np.stack(arrays_list, axis=-1)
         return self.cached_static_data
 
