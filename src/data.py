@@ -4,7 +4,7 @@ import numpy as np
 
 from src.config import DATAFOLDER_PATH, TEST_YEARS, TARGET_DATASET
 
-from typing import List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 
 
 class Dataset:
@@ -23,6 +23,9 @@ class Dataset:
         self.static_datasets = self._retrieve_static_interim_datasets()
 
         self.time_pairs = self.retrieve_date_tuples()
+
+        self.cached_dynamic_means_and_stds: Dict[str, Tuple[float, float]] = {}
+        self.cached_static_means_and_stds: Dict[str, Tuple[float, float]] = {}
 
         self.cached_static_data: Optional[np.ndarray] = None
         self.cached_target_data: Optional[xr.Dataset] = None
@@ -148,11 +151,17 @@ class Dataset:
 
             for data_var in variables:
                 variable = ds[data_var]
-                variable_mean = np.nanmean(variable)
-                var_at_ts = np.nan_to_num(
-                    variable.sel(time=timestep).values, nan=variable_mean
-                )
-                arrays_list.append(var_at_ts)
+                var_label = f"{dataset}_{data_var}"
+                if var_label not in self.cached_dynamic_means_and_stds:
+                    variable_mean = np.nanmean(variable)
+                    variable_std = np.nanstd(variable)
+                    self.cached_dynamic_means_and_stds[var_label] = (
+                        variable_mean,
+                        variable_std,
+                    )
+                mean, std = self.cached_dynamic_means_and_stds[var_label]
+                var_at_ts = np.nan_to_num(variable.sel(time=timestep).values, nan=mean)
+                arrays_list.append((var_at_ts - mean) / std)
         return np.stack(arrays_list, axis=-1)
 
     def load_static_data(self) -> np.ndarray:
@@ -165,8 +174,19 @@ class Dataset:
                 )
                 variables = sorted(list(ds.data_vars))
                 for data_var in variables:
-                    var_mean = np.nanmean(ds[data_var].values)
-                    arrays_list.append(np.nan_to_num(ds[data_var].values, nan=var_mean))
+                    var_label = f"{dataset}_{data_var}"
+                    if var_label not in self.cached_static_means_and_stds:
+                        variable_mean = np.nanmean(ds[data_var].values)
+                        variable_std = np.nanstd(ds[data_var].values)
+                        self.cached_static_means_and_stds[var_label] = (
+                            variable_mean,
+                            variable_std,
+                        )
+                    mean, std = self.cached_static_means_and_stds[var_label]
+                    normed_var = (
+                        np.nan_to_num(ds[data_var].values, nan=mean) - mean
+                    ) / std
+                    arrays_list.append(normed_var)
             self.cached_static_data = np.stack(arrays_list, axis=-1)
         return self.cached_static_data
 
