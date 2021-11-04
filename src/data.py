@@ -86,7 +86,7 @@ class Dataset:
             #
             if ds_times[0] > earliest_time:
                 earliest_time = ds_times[0]
-                common = common[ common >= earliest_time ]
+                common = common[common >= earliest_time]
 
             # Case 2: A dataset's latest time is before the common range's end
             # Remove all times occuring after this new latest time form the common time range.
@@ -97,7 +97,7 @@ class Dataset:
             #
             if ds_times[-1] < latest_time:
                 latest_time = ds_times[-1]
-                common = common[ common <= latest_time ]
+                common = common[common <= latest_time]
 
             # Tested with different loading orders and subsets of available datasets.
             #
@@ -117,10 +117,10 @@ class Dataset:
             print(f"\nCommon time range of datasets: {common[0]} - {common[-1]}")
             common = [x for x in common if not self._is_test_time(x)]
 
-        print(f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}")
+        print(
+            f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}"
+        )
         return [(common[idx - 1], common[idx]) for idx in range(1, len(common))]
-
-
 
     def load_target_data_for_timestep(self, timestep: str) -> np.ndarray:
         if self.cached_target_data is None:
