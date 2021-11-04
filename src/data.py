@@ -86,7 +86,7 @@ class Dataset:
             #
             if ds_times[0] > earliest_time:
                 earliest_time = ds_times[0]
-                common = common[ common >= earliest_time ]
+                common = common[common >= earliest_time]
 
             # Case 2: A dataset's latest time is before the common range's end
             # Remove all times occuring after this new latest time form the common time range.
@@ -97,7 +97,7 @@ class Dataset:
             #
             if ds_times[-1] < latest_time:
                 latest_time = ds_times[-1]
-                common = common[ common <= latest_time ]
+                common = common[common <= latest_time]
 
             # Tested with different loading orders and subsets of available datasets.
             #
@@ -117,10 +117,10 @@ class Dataset:
             print(f"\nCommon time range of datasets: {common[0]} - {common[-1]}")
             common = [x for x in common if not self._is_test_time(x)]
 
-        print(f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}")
+        print(
+            f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}"
+        )
         return [(common[idx - 1], common[idx]) for idx in range(1, len(common))]
-
-
 
     def load_target_data_for_timestep(self, timestep: str) -> np.ndarray:
         if self.cached_target_data is None:
@@ -133,6 +133,11 @@ class Dataset:
 
         return self.cached_target_data.sel(time=timestep)[data_vars[0]].values
 
+    @staticmethod
+    def _fill_nan(array: np.ndarray) -> np.ndarray:
+        mean = np.nanmean(array)
+        return np.nan_to_num(array, mean)
+
     def load_dynamic_data_for_timestep(self, timestep: str) -> np.ndarray:
         arrays_list: List[np.ndarray] = []
         for dataset in self.dynamic_datasets:
@@ -141,9 +146,13 @@ class Dataset:
             )
             variables = sorted(list(ds.data_vars))
 
-            ds_at_timestep = ds.sel(time=timestep)
             for data_var in variables:
-                arrays_list.append(ds_at_timestep[data_var].values)
+                variable = ds[data_var]
+                variable_mean = np.nanmean(variable)
+                var_at_ts = np.nan_to_num(
+                    variable.sel(time=timestep).values, nan=variable_mean
+                )
+                arrays_list.append(var_at_ts)
         return np.stack(arrays_list, axis=-1)
 
     def load_static_data(self) -> np.ndarray:
@@ -156,7 +165,8 @@ class Dataset:
                 )
                 variables = sorted(list(ds.data_vars))
                 for data_var in variables:
-                    arrays_list.append(ds[data_var].values)
+                    var_mean = np.nanmean(ds[data_var].values)
+                    arrays_list.append(np.nan_to_num(ds[data_var].values, nan=var_mean))
             self.cached_static_data = np.stack(arrays_list, axis=-1)
         return self.cached_static_data
 
