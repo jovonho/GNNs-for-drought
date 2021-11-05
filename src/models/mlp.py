@@ -136,7 +136,7 @@ class MLPTrainer(pl.LightningModule):
 
         if float(avg_loss) < self.best_val_loss:
             self.best_val_loss = float(avg_loss)
-            print(f"\n Saving best state_dict: accuracy: {tensorboard_logs['val_MSE']}")
+            print(f"\n Saving best state_dict - MSE: {tensorboard_logs['val_MSE']}")
             self.save_state_dict()
 
         return {"val_loss": avg_loss, "log": tensorboard_logs}
