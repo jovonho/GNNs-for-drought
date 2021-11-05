@@ -180,6 +180,16 @@ class Dataset:
             self.cached_static_data = np.stack(arrays_list, axis=-1)
         return self.cached_static_data
 
+    @property
+    def num_features(self) -> int:
+        x, _ = self[0]
+        return x.shape[0]
+
+    @property
+    def num_predictands(self) -> int:
+        _, y = self[0]
+        return y.shape[0]
+
     def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
 
         x_timestep, y_timestep = self.time_pairs[idx]
