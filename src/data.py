@@ -1,10 +1,16 @@
-from pathlib import Path
+import torch
 import xarray as xr
 import numpy as np
+from pathlib import Path
+from itertools import product
 
 from src.config import DATAFOLDER_PATH, TEST_YEARS, TARGET_DATASET
 
 from typing import Dict, List, Tuple, Optional
+
+import warnings
+
+warnings.filterwarnings("error")
 
 
 class Dataset:
@@ -13,12 +19,16 @@ class Dataset:
     as input to predict VCI at the following timestep
     """
 
-    def __init__(self, data_folder: Path = DATAFOLDER_PATH, is_test: bool = False) -> None:
+    def __init__(
+        self, data_folder: Path = DATAFOLDER_PATH, is_test: bool = False, flatten: bool = True
+    ) -> None:
         self.data_folder = data_folder
         self.is_test = is_test
+        self.flatten = flatten
 
         self.dynamic_datasets = self._retrieve_dynamic_interim_datasets()
         self.static_datasets = self._retrieve_static_interim_datasets()
+        self.coordinates = self._get_coordinates()
 
         self.time_pairs = self.retrieve_date_tuples()
 
@@ -30,6 +40,12 @@ class Dataset:
 
     def __len__(self) -> int:
         return len(self.time_pairs)
+
+    def _get_coordinates(self) -> List[Tuple]:
+        ds = xr.open_dataset(
+            self.data_folder / "interim/static" / self.static_datasets[0] / "data_kenya.nc"
+        )
+        return list(product(ds.indexes["lon"], ds.indexes["lat"]))
 
     def _retrieve_dynamic_interim_datasets(self) -> List[str]:
         interim_folder = self.data_folder / "interim"
@@ -130,13 +146,30 @@ class Dataset:
 
         return self.cached_target_data.sel(time=timestep)[data_vars[0]].values
 
-    @staticmethod
-    def _fill_nan(array: np.ndarray) -> np.ndarray:
-        mean = np.nanmean(array)
+    # Removed static to use it from this class itself
+    def _fill_nan(self, array: np.ndarray) -> np.ndarray:
+        """
+        TODO: The following timesteps in the VCI_preprocessed data have all nan values.
+        Instead of setting them to zero it might be better to copy previous month
+        or interporlate between surrounding months.
+
+        1985-01-31T00:00:00.000000000
+        1985-02-28T00:00:00.000000000
+        1994-10-31T00:00:00.000000000
+        1994-11-30T00:00:00.000000000
+        1994-12-31T00:00:00.000000000
+        2004-04-30T00:00:00.000000000
+        2004-05-31T00:00:00.000000000
+        """
+        try:
+            mean = np.nanmean(array)
+        except RuntimeWarning:
+            mean = 0
         return np.nan_to_num(array, mean)
 
     def load_dynamic_data_for_timestep(self, timestep: str) -> np.ndarray:
         arrays_list: List[np.ndarray] = []
+
         for dataset in self.dynamic_datasets:
             ds = xr.open_dataset(self.data_folder / "interim" / dataset / "data_kenya.nc")
             variables = sorted(list(ds.data_vars))
@@ -154,6 +187,7 @@ class Dataset:
                 mean, std = self.cached_dynamic_means_and_stds[var_label]
                 var_at_ts = np.nan_to_num(variable.sel(time=timestep).values, nan=mean)
                 arrays_list.append((var_at_ts - mean) / std)
+
         return np.stack(arrays_list, axis=-1)
 
     def load_static_data(self) -> np.ndarray:
@@ -164,6 +198,9 @@ class Dataset:
                 ds = xr.open_dataset(
                     self.data_folder / "interim/static" / dataset / "data_kenya.nc"
                 )
+                # Cache a list of node coordinates for future reference
+                if self.coordinates is None:
+                    self.coordinates = list(product(ds.indexes["lon"], ds.indexes["lat"]))
                 variables = sorted(list(ds.data_vars))
                 for data_var in variables:
                     var_label = f"{dataset}_{data_var}"
@@ -190,6 +227,29 @@ class Dataset:
         _, y = self[0]
         return y.shape[0]
 
+    def get_adj_learning_features(self, num_timestamps=344) -> np.ndarray:
+        """
+        Graphino returns normalized lat/lon + (2 features * 1200 obs) for each node
+        for an total output size of 1345 * 2402.
+        We return a 1575 * (num_timestamps * 7 features) matrix, with num_t = 344 by default to
+        return a similar sized matrix.
+
+        NOTE: In graphino the feature values are contiguous in the matrix
+        whereas for us their are interleaved. This could be a source of
+        differences in the fit of the learned adjacency matrix.
+        """
+        max_lat = np.max(self.coordinates)
+        static_feats = np.array(
+            [[lat / max_lat, (lon - 180) / 360] for lat, lon in self.coordinates]
+        )
+        # TODO: This is slow, might be faster to extract full columns from the xarray directly
+        for idx in range(num_timestamps):
+            x, _ = self[idx]
+            # reshape to 1575 * 7
+            static_feats = np.concatenate((static_feats, x), axis=1)
+
+        return static_feats
+
     def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
 
         x_timestep, y_timestep = self.time_pairs[idx]
@@ -200,14 +260,22 @@ class Dataset:
         x_data = np.concatenate([dynamic_data, static_data], axis=-1)
         target_data = self.load_target_data_for_timestep(y_timestep)
 
-        # TODO: this is a very basic way of dealing with NaNs right now. It should
-        # be improved
-        x_data = np.nan_to_num(x_data)
-        target_data = np.nan_to_num(target_data)
+        x_data = self._fill_nan(x_data)
+        target_data = self._fill_nan(target_data)
 
         # finally, flatten everything - our basic sklearn regressor
         # is going to expect a 2d input
-        return x_data.flatten(), target_data.flatten()
+        if self.flatten:
+            return x_data.flatten(), target_data.flatten()
+        else:
+            dims = x_data.shape
+            x_data = torch.as_tensor(
+                x_data.reshape((dims[0] * dims[1], dims[2])), dtype=torch.float32
+            )
+            target_data = torch.as_tensor(
+                target_data.reshape(dims[0] * dims[1]), dtype=torch.float32
+            )
+            return x_data, target_data
 
     def load_all_data(self) -> np.ndarray:
         """
@@ -223,3 +291,11 @@ class Dataset:
             y_list.append(y)
 
         return np.stack(x_list), np.stack(y_list)
+
+
+# TODO: When running this file directly, we get an error saying No module named src
+# But if we remove it, we get errors when running benchmark_*.py files
+if __name__ == "__main__":
+    labels = xr.open_dataset(Path("./data/interim") / TARGET_DATASET / "data_kenya.nc")
+
+    print(labels.sel(time="1985-02-28").VCI)
