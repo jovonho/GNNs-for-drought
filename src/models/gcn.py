@@ -1,8 +1,8 @@
 """
-    Adapted from 
+    Adapted from
     https://github.com/salvaRC/Graphino/blob/master/graphino/structure_learner.py
-    https://github.com/salvaRC/Graphino/blob/master/graphino/GCN/GCN_model.py
     https://github.com/salvaRC/Graphino/blob/master/graphino/GCN/graph_conv_layer.py
+    https://github.com/salvaRC/Graphino/blob/master/graphino/GCN/GCN_model.py
 """
 
 import math
@@ -71,11 +71,6 @@ class AdjacencyLearner(nn.Module):
 
 
 class GraphConvolution(nn.Module):
-    """
-    This GCN layer was adapted from the PyTorch version by T. Kipf.
-    Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
-    """
-
     def __init__(
         self,
         in_features,
@@ -115,11 +110,6 @@ class GraphConvolution(nn.Module):
     def forward(self, input, A):
         support = torch.matmul(input, self.weight)  # (batch-size, #nodes, #out-dim)
         node_repr = torch.matmul(A, support)  # (batch-size, #nodes, #out-dim)
-
-        # print(
-        #     f"GCN layer forward method:\n\tinput: {input.dtype}, {input.shape}\n\tweights: {self.weight.dtype}, {self.weight.shape}"
-        # )
-        # print(f"\tsupport: {support.shape}\n\tnode_repr: {node_repr.shape}")
 
         if self.bias is not None:
             node_repr = node_repr + self.bias

@@ -1,35 +1,39 @@
-from torch._C import dtype
-from torch.utils.data.dataloader import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from src.models.gcn import GCN
-import torch.functional as F
-import torch.optim as optim
-import torch.nn as nn
-import numpy as np
-import torch
 import time
+import torch
+import numpy as np
+import torch.nn as nn
+import torch.optim as optim
+
 from pathlib import Path
+from src.models.gcn import GCN
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import r2_score, mean_squared_error
 
 from src.data import Dataset
+
+import warnings
+
+warnings.simplefilter("ignore", RuntimeWarning)
 
 
 def main():
 
     t1 = time.time()
 
-    device = "cpu"
     trainset = Dataset(is_test=False, flatten=False)
     testset = Dataset(is_test=True, flatten=False)
 
+    num_samples = len(trainset)
+
     # We need to get a matrix of dimensions #nodes * #number of features
     adj_learn_features = trainset.get_adj_learning_features()
-    print(f"Adjacency learning features {adj_learn_features.shape}")
+    print(f"\nAdjacency learning features {adj_learn_features.shape}")
 
     lr = 0.005
     epochs = 20
+    device = "cpu"
     batch_size = 32
-    num_workers = 4
 
     # Num workers doesn't work with these
     trainloader = DataLoader(trainset, batch_size=batch_size)
@@ -48,6 +52,9 @@ def main():
     tb = SummaryWriter(comment=comment)
 
     print("Training a GCN\n")
+    print(model)
+
+    log_iter = (num_samples // batch_size) // 4
 
     for epoch in range(epochs):
 
@@ -73,16 +80,17 @@ def main():
             epoch_r2.append(r2)
             progress_r2.append(r2)
 
-            if i % 4 == 0 and i != 0:
+            if i % log_iter == 0 and i != 0:
                 print(f"Iteration {i}:\n\tMSE:\t{progress_loss}\n\tr2:\t{np.mean(progress_r2)}")
                 progress_loss = 0
                 progress_r2 = []
 
         epoch_r2 = np.mean(epoch_r2)
-        num_edges = torch.count_nonzero(model.A.detach()).item()
+        num_edges = len(torch.nonzero(model.A.detach(), as_tuple=False))
         print(
             "---------------------------------------------------"
-            f"\t\nEpoch {epoch}:\n\ttotal MSE:\t{total_loss}\n\tepoch r2:\t{epoch_r2}\n\tnum edges:\t{num_edges}\n"
+            f"\t\nEpoch {epoch}:\n\ttotal MSE:\t{total_loss}\n\t"
+            f"epoch r2:\t{epoch_r2}\n\tnum edges:\t{num_edges}\n"
         )
 
         tb.add_scalar("MSE", total_loss, epoch)
@@ -99,9 +107,7 @@ def main():
 
     torch.save(
         model,
-        Path(
-            f"./models/GCN-{epochs}epochs-{lr}lr-{batch_size}batch-{hid_dim}hiddim-{num_layer}layers.pth"
-        ),
+        Path(f"./models/GCN-{epochs}epochs-{lr}lr-{batch_size}bs-{hid_dim}hd-{num_layer}L.pth"),
     )
 
     # Evaluate on test set

@@ -8,10 +8,6 @@ from src.config import DATAFOLDER_PATH, TEST_YEARS, TARGET_DATASET
 
 from typing import Dict, List, Tuple, Optional
 
-import warnings
-
-warnings.filterwarnings("error")
-
 
 class Dataset:
     """
@@ -161,9 +157,8 @@ class Dataset:
         2004-04-30T00:00:00.000000000
         2004-05-31T00:00:00.000000000
         """
-        try:
-            mean = np.nanmean(array)
-        except RuntimeWarning:
+        mean = np.nanmean(array)
+        if np.isnan(mean):
             mean = 0
         return np.nan_to_num(array, mean)
 
