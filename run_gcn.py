@@ -6,11 +6,14 @@ import torch.optim as optim
 
 from pathlib import Path
 from src.models.gcn import GCN
+from collections import OrderedDict
 from torch.utils.data import DataLoader
+from src.runutils import RunBuilder, RunManager
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import r2_score, mean_squared_error
 
 from src.data import Dataset
+from src.config import MODELS_PATH, RUNS_PATH
 
 import warnings
 
@@ -52,13 +55,12 @@ def main():
     tb = SummaryWriter(comment=comment)
 
     print("Training a GCN\n")
-    print(model)
 
     log_iter = (num_samples // batch_size) // 4
 
     for epoch in range(epochs):
 
-        total_loss = 0
+        epoch_loss = 0
         epoch_r2 = []
         progress_loss = 0
         progress_r2 = []
@@ -68,32 +70,35 @@ def main():
 
             y_pred = model(X)
             loss = criterion(y_pred, y_true)
-            r2 = r2_score(y_true.data, y_pred.data)
+            batch_loss = loss.item() * batch_size
+
+            epoch_loss += batch_loss
+            progress_loss += batch_loss
+
+            batch_r2 = r2_score(y_true.data, np.nan_to_num(y_pred.data))
+            epoch_r2.append(batch_r2)
+            progress_r2.append(batch_r2)
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            # Are we supposed to multiply these by the batch_size?
-            total_loss += loss.item()
-            progress_loss += loss.item()
-            epoch_r2.append(r2)
-            progress_r2.append(r2)
-
-            if i % log_iter == 0 and i != 0:
-                print(f"Iteration {i}:\n\tMSE:\t{progress_loss}\n\tr2:\t{np.mean(progress_r2)}")
-                progress_loss = 0
-                progress_r2 = []
+            if i != 0 and i % log_iter == 0:
+                print(
+                    f"Iteration {i}:"
+                    f"\n\tloss (mse):\t{progress_loss / ((i+1) * batch_size)}"
+                    f"\n\tR2 score:\t{np.mean(progress_r2)}"
+                )
 
         epoch_r2 = np.mean(epoch_r2)
         num_edges = len(torch.nonzero(model.A.detach(), as_tuple=False))
         print(
             "---------------------------------------------------"
-            f"\t\nEpoch {epoch}:\n\ttotal MSE:\t{total_loss}\n\t"
+            f"\t\nEpoch {epoch}:\n\ttotal MSE:\t{epoch_loss}\n\t"
             f"epoch r2:\t{epoch_r2}\n\tnum edges:\t{num_edges}\n"
         )
 
-        tb.add_scalar("MSE", total_loss, epoch)
+        tb.add_scalar("MSE", epoch_loss, epoch)
         tb.add_scalar("R2", epoch_r2, epoch)
         tb.add_scalar("Num Edges", num_edges, epoch)
 
@@ -105,26 +110,161 @@ def main():
     tb.flush()
     tb.close()
 
-    torch.save(
-        model,
-        Path(f"./models/GCN-{epochs}epochs-{lr}lr-{batch_size}bs-{hid_dim}hd-{num_layer}L.pth"),
-    )
+    MODEL_FILENAME = f"GCN-{epochs}epochs-{lr}lr-{batch_size}bs-{hid_dim}hd-{num_layer}L.pth"
+    torch.save(model, MODELS_PATH / MODEL_FILENAME)
 
     # Evaluate on test set
     model.eval()
     mse = 0
-    r2 = 0
+    batch_r2 = 0
     for i, (X, y_true) in enumerate(testloader):
         preds = model(X)
-        r2 += r2_score(y_true.data, preds.data)
+        batch_r2 += r2_score(y_true.data, preds.data)
         mse += mean_squared_error(y_true.data, preds.data)
 
-    r2 = np.mean(r2)
-    print(f"Test Set:\n\tMSE {mse}\n\tR2 {r2}")
+    batch_r2 = np.mean(batch_r2)
+    print(f"Test Set:\n\tMSE {mse}\n\tR2 {batch_r2}")
+
+
+def get_optimizer(optim_str, model_params, lr):
+    """
+    Seems like SGD is out of style nowadays and Adam is almost always better
+    """
+    optimizers = {
+        "Adam": optim.Adam(model_params, lr=lr),
+        "SGD": optim.SGD(model_params, lr=lr, weight_decay=1e-6, momentum=0.9, nesterov=True),
+    }
+    return optimizers[optim_str]
+
+
+def explore_model_params(num_epochs=50):
+
+    device = "cpu"
+
+    trainset = Dataset(is_test=False, flatten=False)
+    # num_samples = len(trainset)
+    adj_learn_features = trainset.get_adj_learning_features()
+
+    # Fill in parameters to explore
+    # Will automatically explore all combinations
+    params = OrderedDict(
+        lr=[0.01, 0.005, 0.001],
+        batch_size=[4, 8, 16, 32, 64],
+        hid_dim=[100, 150, 250, 350],
+        out_dim=[100, 150, 50],
+        adj_learn_dim=[50, 100, 25],
+        num_layer=[2, 3],
+        optimizer=["Adam"],
+    )
+    m = RunManager()
+
+    max_test_mse = 0
+
+    import os
+    import re
+
+    # Check runs that already ran
+    previous_runs = os.listdir(RUNS_PATH)
+
+    for run in RunBuilder.get_runs(params):
+
+        run_str = re.escape(run.__str__())
+        r = re.compile(rf".*{run_str}")
+
+        matches = list(filter(r.match, previous_runs))
+
+        if len(matches) > 0:
+            # Run already done
+            print(f"Already ran {run}\nSkipping")
+            continue
+
+        # Make it so we get 4 intermediate print outs per epoch
+        num_samples = len(trainset)
+        log_iter = (num_samples // run.batch_size) // 4
+
+        model = GCN(
+            7,
+            run.hid_dim,
+            run.out_dim,
+            run.num_layer,
+            adj_learn_features=adj_learn_features,
+            adj_learn_dim=run.adj_learn_dim,
+        )
+        model = model.to(device)
+        model.train()
+        trainloader = DataLoader(trainset, batch_size=run.batch_size)
+        optimizer = optim.Adam(model.parameters(), lr=run.lr)
+        criterion = nn.MSELoss(reduction="mean")
+
+        m.begin_run(run, model, trainloader)
+
+        for _ in range(num_epochs):
+            progress_loss = 0
+            progress_r2 = []
+
+            m.begin_epoch()
+
+            for i, (X, y_true) in enumerate(trainloader):
+
+                y_pred = model(X)
+
+                loss = criterion(y_pred, y_true)
+                # Was getting some errors
+                batch_r2 = r2_score(y_true.data, np.nan_to_num(y_pred.data))
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                m.track_r2(batch_r2)
+                m.track_loss(loss)
+
+                progress_loss += loss.item() * run.batch_size
+                progress_r2.append(batch_r2)
+
+                if i != 0 and i % log_iter == 0:
+                    print(
+                        f"Iteration {i}:"
+                        f"\n\tloss (mse):\t{progress_loss / ((i+1) * run.batch_size)}"
+                        f"\n\tR2 score:\t{np.mean(progress_r2)}"
+                    )
+
+            num_edges = len(torch.nonzero(model.A.detach(), as_tuple=False))
+            m.end_epoch(num_edges)
+        m.end_run()
+
+        # Evaluate model on test set
+        model.eval()
+        testset = Dataset(is_test=True, flatten=False)
+        testloader = DataLoader(testset, batch_size=run.batch_size)
+        test_num_samples = len(testset)
+
+        test_mse = 0
+        test_r2 = []
+        for i, (X, y_true) in enumerate(testloader):
+            preds = model(X)
+            test_r2.append(r2_score(y_true.data, np.nan_to_num(preds.data)))
+            test_mse += mean_squared_error(y_true.data, preds.data) * run.batch_size
+
+        test_r2 = round(np.nan_to_num(np.mean(test_r2)), 2)
+        test_mse = round(test_mse / test_num_samples, 2)
+        print(f"Test Set:\n\tMSE {test_mse}\n\tR2 {test_r2}\n")
+
+        if test_mse > max_test_mse and test_mse < 500:
+            print(f"New High Score! ({test_mse} vs {max_test_mse}\nSaving model")
+            max_test_mse = test_mse
+            MODELS_FILENAME = f"GCN-{num_epochs}epochs-TestMSE={test_mse}-{run}.pth"
+            torch.save(
+                model,
+                MODELS_PATH / MODELS_FILENAME,
+            )
+    m.save(f"results/{run}")
 
 
 if __name__ == "__main__":
-    main()
+
+    # main()
+    explore_model_params()
 
     """
     Paramters for Graphino 1st model
