@@ -1,5 +1,8 @@
 .venv/
 venv/
+.vscode/
+.pytest_cache/
 __pycache__/
 extra/
 notes
+lightning_logs/
