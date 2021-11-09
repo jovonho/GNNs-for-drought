@@ -231,7 +231,6 @@ def explore_model_params(num_epochs=50):
 
             num_edges = len(torch.nonzero(model.A.detach(), as_tuple=False))
             m.end_epoch(num_edges)
-        m.end_run()
 
         # Evaluate model on test set
         model.eval()
@@ -258,6 +257,8 @@ def explore_model_params(num_epochs=50):
                 model,
                 MODELS_PATH / MODELS_FILENAME,
             )
+
+        m.end_run(test_mse)
     m.save(f"results/{run}")
 
 

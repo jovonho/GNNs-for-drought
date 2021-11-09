@@ -51,7 +51,8 @@ class RunManager:
 
         print(run)
 
-    def end_run(self):
+    def end_run(self, test_mse):
+        self.tb.add_scalar("Testset MSE", test_mse)
         self.tb.flush()
         self.tb.close()
         self.epoch_count = 0
