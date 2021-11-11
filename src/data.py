@@ -149,7 +149,7 @@ class Dataset:
         indices_to_remove = []
         for idx in range(len(self)):
             _, y_timestep = self.time_pairs[idx]
-            target_data = self.load_target_data_for_timestep(y_timestep)
+            target_data, _ = self.load_target_data_for_timestep(y_timestep)
             if np.count_nonzero(~np.isnan(target_data)) == target_data.size:
                 indices_to_remove.append(idx)
         self.time_pairs = [
