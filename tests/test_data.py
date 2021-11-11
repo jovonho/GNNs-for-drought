@@ -21,4 +21,4 @@ def test_filter_targets():
     unfiltered_time_pairs = dataset.retrieve_date_tuples()
 
     # checks some time steps have been removed
-    assert len(dataset.time_pairs) < unfiltered_time_pairs
+    assert len(dataset.time_pairs) < len(unfiltered_time_pairs)
