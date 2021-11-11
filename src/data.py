@@ -26,14 +26,14 @@ class Dataset:
         self.static_datasets = self._retrieve_static_interim_datasets()
         self.coordinates = self._get_coordinates()
 
+        self.cached_static_data: Optional[np.ndarray] = None
+        self.cached_target_data: Optional[xr.Dataset] = None
+
         self.time_pairs = self.retrieve_date_tuples()
         self._filter_targets()
 
         self.cached_dynamic_means_and_stds: Dict[str, Tuple[float, float]] = {}
         self.cached_static_means_and_stds: Dict[str, Tuple[float, float]] = {}
-
-        self.cached_static_data: Optional[np.ndarray] = None
-        self.cached_target_data: Optional[xr.Dataset] = None
 
     def __len__(self) -> int:
         return len(self.time_pairs)
@@ -132,7 +132,7 @@ class Dataset:
         print(f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}")
         return [(common[idx - 1], common[idx]) for idx in range(1, len(common))]
 
-    def load_target_data_for_timestep(self, timestep: str) -> np.ndarray:
+    def load_target_data_for_timestep(self, timestep: str) -> Tuple[np.ndarray, np.ndarray]:
         if self.cached_target_data is None:
             self.cached_target_data = xr.open_dataset(
                 self.data_folder / "interim" / TARGET_DATASET / "data_kenya.nc"
@@ -141,7 +141,9 @@ class Dataset:
         data_vars = list(self.cached_target_data.data_vars)
         assert len(data_vars) == 1
 
-        return self.cached_target_data.sel(time=timestep)[data_vars[0]].values
+        target_values = self.cached_target_data.sel(time=timestep)[data_vars[0]].values
+
+        return target_values, ~np.isnan(target_values)
 
     def _filter_targets(self) -> None:
         indices_to_remove = []
@@ -237,7 +239,7 @@ class Dataset:
 
         return static_feats
 
-    def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
+    def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
         x_timestep, y_timestep = self.time_pairs[idx]
 
@@ -245,7 +247,7 @@ class Dataset:
         static_data = self.load_static_data()
 
         x_data = np.concatenate([dynamic_data, static_data], axis=-1)
-        target_data = self.load_target_data_for_timestep(y_timestep)
+        target_data, mask = self.load_target_data_for_timestep(y_timestep)
 
         # finally, flatten everything - our basic sklearn regressor
         # is going to expect a 2d input
@@ -259,9 +261,9 @@ class Dataset:
             target_data = torch.as_tensor(
                 target_data.reshape(dims[0] * dims[1]), dtype=torch.float32
             )
-            return x_data, target_data
+            return x_data, target_data, mask
 
-    def load_all_data(self) -> np.ndarray:
+    def load_all_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Return two arrays, with the following shapes:
         x: [num_instances, num_features]
@@ -269,12 +271,14 @@ class Dataset:
         """
         x_list: List[np.ndarray] = []
         y_list: List[np.ndarray] = []
+        mask_list: List[np.ndarray] = []
         for idx in range(len(self)):
-            x, y = self[idx]
+            x, y, mask = self[idx]
             x_list.append(x)
             y_list.append(y)
+            mask_list.append(mask)
 
-        return np.stack(x_list), np.stack(y_list)
+        return np.stack(x_list), np.stack(y_list), np.stack(mask_list)
 
 
 # TODO: When running this file directly, we get an error saying No module named src
