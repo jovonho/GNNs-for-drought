@@ -143,14 +143,14 @@ class Dataset:
 
         target_values = self.cached_target_data.sel(time=timestep)[data_vars[0]].values
 
-        return target_values, ~np.isnan(target_values)
+        return target_values, np.isnan(target_values)
 
     def _filter_targets(self) -> None:
         indices_to_remove = []
         for idx in range(len(self)):
             _, y_timestep = self.time_pairs[idx]
             target_data, _ = self.load_target_data_for_timestep(y_timestep)
-            if np.count_nonzero(~np.isnan(target_data)) == target_data.size:
+            if np.count_nonzero(np.isnan(target_data)) == target_data.size:
                 indices_to_remove.append(idx)
         self.time_pairs = [
             val for idx, val in enumerate(self.time_pairs) if idx not in indices_to_remove
@@ -252,7 +252,7 @@ class Dataset:
         # finally, flatten everything - our basic sklearn regressor
         # is going to expect a 2d input
         if self.flatten:
-            return x_data.flatten(), target_data.flatten()
+            return x_data.flatten(), target_data.flatten(), mask.flatten()
         else:
             dims = x_data.shape
             x_data = torch.as_tensor(
@@ -261,7 +261,8 @@ class Dataset:
             target_data = torch.as_tensor(
                 target_data.reshape(dims[0] * dims[1]), dtype=torch.float32
             )
-            return x_data, target_data, mask
+            mask_data = torch.as_tensor(mask.reshape(dims[0] * dims[1], dtype=torch.float32))
+            return x_data, target_data, mask_data
 
     def load_all_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
