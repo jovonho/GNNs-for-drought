@@ -9,6 +9,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from ..data import Dataset, DATAFOLDER_PATH
+from ..utils import filter_preds_test_by_mask
 from sklearn.metrics import mean_squared_error
 
 from typing import List
@@ -102,18 +103,20 @@ class MLPTrainer(pl.LightningModule):
         return self.classifier(x)
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
+        x, y, mask = batch
 
         preds = self.forward(x.float())
-        loss = self.loss(preds.squeeze(1), y.float())
+        y, preds = filter_preds_test_by_mask(y, preds.squeeze(1), mask)
+        loss = self.loss(preds, y.float())
 
         return {"loss": loss, "log": {"train_loss": loss}}
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
+        x, y, mask = batch
 
         preds = self.forward(x.float())
-        loss = self.loss(preds.squeeze(1), y.float())
+        y, preds = filter_preds_test_by_mask(y, preds.squeeze(1), mask)
+        loss = self.loss(preds, y.float())
 
         return {"val_loss": loss, "log": {"val_loss": loss}, "preds": preds, "labels": y}
 
