@@ -27,6 +27,7 @@ class Dataset:
         self.coordinates = self._get_coordinates()
 
         self.time_pairs = self.retrieve_date_tuples()
+        self._filter_targets()
 
         self.cached_dynamic_means_and_stds: Dict[str, Tuple[float, float]] = {}
         self.cached_static_means_and_stds: Dict[str, Tuple[float, float]] = {}
@@ -142,25 +143,16 @@ class Dataset:
 
         return self.cached_target_data.sel(time=timestep)[data_vars[0]].values
 
-    # Removed static to use it from this class itself
-    def _fill_nan(self, array: np.ndarray) -> np.ndarray:
-        """
-        TODO: The following timesteps in the VCI_preprocessed data have all nan values.
-        Instead of setting them to zero it might be better to copy previous month
-        or interporlate between surrounding months.
-
-        1985-01-31T00:00:00.000000000
-        1985-02-28T00:00:00.000000000
-        1994-10-31T00:00:00.000000000
-        1994-11-30T00:00:00.000000000
-        1994-12-31T00:00:00.000000000
-        2004-04-30T00:00:00.000000000
-        2004-05-31T00:00:00.000000000
-        """
-        mean = np.nanmean(array)
-        if np.isnan(mean):
-            mean = 0
-        return np.nan_to_num(array, mean)
+    def _filter_targets(self) -> None:
+        indices_to_remove = []
+        for idx in range(len(self)):
+            _, y_timestep = self.time_pairs[idx]
+            target_data = self.load_target_data_for_timestep(y_timestep)
+            if np.count_nonzero(~np.isnan(target_data)) == target_data.size:
+                indices_to_remove.append(idx)
+        self.time_pairs = [
+            val for idx, val in enumerate(self.time_pairs) if idx not in indices_to_remove
+        ]
 
     def load_dynamic_data_for_timestep(self, timestep: str) -> np.ndarray:
         arrays_list: List[np.ndarray] = []
@@ -254,9 +246,6 @@ class Dataset:
 
         x_data = np.concatenate([dynamic_data, static_data], axis=-1)
         target_data = self.load_target_data_for_timestep(y_timestep)
-
-        x_data = self._fill_nan(x_data)
-        target_data = self._fill_nan(target_data)
 
         # finally, flatten everything - our basic sklearn regressor
         # is going to expect a 2d input

@@ -14,3 +14,11 @@ def test_dataset_normalization():
     for idx in range(static_data.shape[-1]):
         assert np.isclose(static_data[:, :, idx].mean(), 0, atol=0.1)
         assert np.isclose(np.std(static_data[:, :, idx]), 1, atol=0.1)
+
+
+def test_filter_targets():
+    dataset = Dataset()
+    unfiltered_time_pairs = dataset.retrieve_date_tuples()
+
+    # checks some time steps have been removed
+    assert len(dataset.time_pairs) < unfiltered_time_pairs
