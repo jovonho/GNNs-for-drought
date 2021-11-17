@@ -143,7 +143,7 @@ class Dataset:
 
         target_values = self.cached_target_data.sel(time=timestep)[data_vars[0]].values
 
-        return target_values, np.isnan(target_values)
+        return target_values, ~np.isnan(target_values)
 
     def _filter_targets(self) -> None:
         indices_to_remove = []
@@ -208,12 +208,12 @@ class Dataset:
 
     @property
     def num_features(self) -> int:
-        x, _ = self[0]
+        x, _, _ = self[0]
         return x.shape[0]
 
     @property
     def num_predictands(self) -> int:
-        _, y = self[0]
+        _, y, _ = self[0]
         return y.shape[0]
 
     def get_adj_learning_features(self, num_timestamps=344) -> np.ndarray:
@@ -233,7 +233,7 @@ class Dataset:
         )
         # TODO: This is slow, might be faster to extract full columns from the xarray directly
         for idx in range(num_timestamps):
-            x, _ = self[idx]
+            x, _, _ = self[idx]
             # reshape to 1575 * 7
             static_feats = np.concatenate((static_feats, x), axis=1)
 
@@ -261,7 +261,7 @@ class Dataset:
             target_data = torch.as_tensor(
                 target_data.reshape(dims[0] * dims[1]), dtype=torch.float32
             )
-            mask_data = torch.as_tensor(mask.reshape(dims[0] * dims[1], dtype=torch.float32))
+            mask_data = torch.as_tensor(mask.reshape(dims[0] * dims[1]), dtype=torch.bool)
             return x_data, target_data, mask_data
 
     def load_all_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
