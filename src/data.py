@@ -16,11 +16,16 @@ class Dataset:
     """
 
     def __init__(
-        self, data_folder: Path = DATAFOLDER_PATH, is_test: bool = False, flatten: bool = True
+        self,
+        data_folder: Path = DATAFOLDER_PATH,
+        is_test: bool = False,
+        flatten: bool = True,
+        normalize_targets: bool = True,
     ) -> None:
         self.data_folder = data_folder
         self.is_test = is_test
         self.flatten = flatten
+        self.normalize_targets = normalize_targets
 
         self.dynamic_datasets = self._retrieve_dynamic_interim_datasets()
         self.static_datasets = self._retrieve_static_interim_datasets()
@@ -32,7 +37,9 @@ class Dataset:
         self.time_pairs = self.retrieve_date_tuples()
         self._filter_targets()
 
-        self.cached_dynamic_means_and_stds: Dict[str, Tuple[float, float]] = {}
+        self.cached_dynamic_means_and_stds: Dict[
+            str, Tuple[float, float]
+        ] = self._calculate_dynamic_means_and_stds()
         self.cached_static_means_and_stds: Dict[str, Tuple[float, float]] = {}
 
     def __len__(self) -> int:
@@ -143,6 +150,12 @@ class Dataset:
 
         target_values = self.cached_target_data.sel(time=timestep)[data_vars[0]].values
 
+        if self.normalize_targets:
+            identifier = f"{TARGET_DATASET}_{data_vars[0]}"
+            target_mean, target_std = self.cached_dynamic_means_and_stds[identifier]
+
+            target_values = (target_values - target_mean) / target_std
+
         return target_values, ~np.isnan(target_values)
 
     def _filter_targets(self) -> None:
@@ -156,6 +169,23 @@ class Dataset:
             val for idx, val in enumerate(self.time_pairs) if idx not in indices_to_remove
         ]
 
+    def _calculate_dynamic_means_and_stds(self) -> Dict[str, Tuple[float, float]]:
+        output_dict: Dict[str, Tuple[float, float]] = []
+        for dataset in self.dynamic_datasets:
+            ds = xr.open_dataset(self.data_folder / "interim" / dataset / "data_kenya.nc")
+            variables = sorted(list(ds.data_vars))
+
+            for data_var in variables:
+                variable = ds[data_var]
+                var_label = f"{dataset}_{data_var}"
+                variable_mean = np.nanmean(variable)
+                variable_std = np.nanstd(variable)
+                output_dict[var_label] = (
+                    variable_mean,
+                    variable_std,
+                )
+        return output_dict
+
     def load_dynamic_data_for_timestep(self, timestep: str) -> np.ndarray:
         arrays_list: List[np.ndarray] = []
 
@@ -166,13 +196,6 @@ class Dataset:
             for data_var in variables:
                 variable = ds[data_var]
                 var_label = f"{dataset}_{data_var}"
-                if var_label not in self.cached_dynamic_means_and_stds:
-                    variable_mean = np.nanmean(variable)
-                    variable_std = np.nanstd(variable)
-                    self.cached_dynamic_means_and_stds[var_label] = (
-                        variable_mean,
-                        variable_std,
-                    )
                 mean, std = self.cached_dynamic_means_and_stds[var_label]
                 var_at_ts = np.nan_to_num(variable.sel(time=timestep).values, nan=mean)
                 arrays_list.append((var_at_ts - mean) / std)
