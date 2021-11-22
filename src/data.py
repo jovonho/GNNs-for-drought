@@ -33,13 +33,14 @@ class Dataset:
 
         self.cached_static_data: Optional[np.ndarray] = None
         self.cached_target_data: Optional[xr.Dataset] = None
+        self.cached_dynamic_means_and_stds: Dict[
+            str, Tuple[float, float]
+        ] = self._calculate_dynamic_means_and_stds()
+        print(self.cached_dynamic_means_and_stds.keys())
 
         self.time_pairs = self.retrieve_date_tuples()
         self._filter_targets()
 
-        self.cached_dynamic_means_and_stds: Dict[
-            str, Tuple[float, float]
-        ] = self._calculate_dynamic_means_and_stds()
         self.cached_static_means_and_stds: Dict[str, Tuple[float, float]] = {}
 
     def __len__(self) -> int:
@@ -57,7 +58,7 @@ class Dataset:
         assert len(foldernames) > 0
         # glob can behave strangely depending on the OS - sorting will ensure
         # consistent behaviour
-        return sorted(foldernames)
+        return [x.name for x in sorted(foldernames)]
 
     def _retrieve_static_interim_datasets(self) -> List[str]:
         interim_folder = self.data_folder / "interim/static"
@@ -65,7 +66,7 @@ class Dataset:
         assert len(foldernames) > 0
         # glob can behave strangely depending on the OS - sorting will ensure
         # consistent behaviour
-        return sorted(foldernames)
+        return [x.name for x in sorted(foldernames)]
 
     @staticmethod
     def _is_test_time(time_string: str) -> bool:
@@ -170,7 +171,7 @@ class Dataset:
         ]
 
     def _calculate_dynamic_means_and_stds(self) -> Dict[str, Tuple[float, float]]:
-        output_dict: Dict[str, Tuple[float, float]] = []
+        output_dict: Dict[str, Tuple[float, float]] = {}
         for dataset in self.dynamic_datasets:
             ds = xr.open_dataset(self.data_folder / "interim" / dataset / "data_kenya.nc")
             variables = sorted(list(ds.data_vars))
