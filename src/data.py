@@ -26,13 +26,14 @@ class Dataset:
         self.static_datasets = self._retrieve_static_interim_datasets()
         self.coordinates = self._get_coordinates()
 
+        self.cached_static_data: Optional[np.ndarray] = None
+        self.cached_target_data: Optional[xr.Dataset] = None
+
         self.time_pairs = self.retrieve_date_tuples()
+        self._filter_targets()
 
         self.cached_dynamic_means_and_stds: Dict[str, Tuple[float, float]] = {}
         self.cached_static_means_and_stds: Dict[str, Tuple[float, float]] = {}
-
-        self.cached_static_data: Optional[np.ndarray] = None
-        self.cached_target_data: Optional[xr.Dataset] = None
 
     def __len__(self) -> int:
         return len(self.time_pairs)
@@ -131,7 +132,7 @@ class Dataset:
         print(f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}")
         return [(common[idx - 1], common[idx]) for idx in range(1, len(common))]
 
-    def load_target_data_for_timestep(self, timestep: str) -> np.ndarray:
+    def load_target_data_for_timestep(self, timestep: str) -> Tuple[np.ndarray, np.ndarray]:
         if self.cached_target_data is None:
             self.cached_target_data = xr.open_dataset(
                 self.data_folder / "interim" / TARGET_DATASET / "data_kenya.nc"
@@ -140,27 +141,20 @@ class Dataset:
         data_vars = list(self.cached_target_data.data_vars)
         assert len(data_vars) == 1
 
-        return self.cached_target_data.sel(time=timestep)[data_vars[0]].values
+        target_values = self.cached_target_data.sel(time=timestep)[data_vars[0]].values
 
-    # Removed static to use it from this class itself
-    def _fill_nan(self, array: np.ndarray) -> np.ndarray:
-        """
-        TODO: The following timesteps in the VCI_preprocessed data have all nan values.
-        Instead of setting them to zero it might be better to copy previous month
-        or interporlate between surrounding months.
+        return target_values, ~np.isnan(target_values)
 
-        1985-01-31T00:00:00.000000000
-        1985-02-28T00:00:00.000000000
-        1994-10-31T00:00:00.000000000
-        1994-11-30T00:00:00.000000000
-        1994-12-31T00:00:00.000000000
-        2004-04-30T00:00:00.000000000
-        2004-05-31T00:00:00.000000000
-        """
-        mean = np.nanmean(array)
-        if np.isnan(mean):
-            mean = 0
-        return np.nan_to_num(array, mean)
+    def _filter_targets(self) -> None:
+        indices_to_remove = []
+        for idx in range(len(self)):
+            _, y_timestep = self.time_pairs[idx]
+            target_data, _ = self.load_target_data_for_timestep(y_timestep)
+            if np.count_nonzero(np.isnan(target_data)) == target_data.size:
+                indices_to_remove.append(idx)
+        self.time_pairs = [
+            val for idx, val in enumerate(self.time_pairs) if idx not in indices_to_remove
+        ]
 
     def load_dynamic_data_for_timestep(self, timestep: str) -> np.ndarray:
         arrays_list: List[np.ndarray] = []
@@ -214,12 +208,12 @@ class Dataset:
 
     @property
     def num_features(self) -> int:
-        x, _ = self[0]
+        x, _, _ = self[0]
         return x.shape[0]
 
     @property
     def num_predictands(self) -> int:
-        _, y = self[0]
+        _, y, _ = self[0]
         return y.shape[0]
 
     def get_adj_learning_features(self, num_timestamps=344) -> np.ndarray:
@@ -239,13 +233,13 @@ class Dataset:
         )
         # TODO: This is slow, might be faster to extract full columns from the xarray directly
         for idx in range(num_timestamps):
-            x, _ = self[idx]
+            x, _, _ = self[idx]
             # reshape to 1575 * 7
             static_feats = np.concatenate((static_feats, x), axis=1)
 
         return static_feats
 
-    def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray]:
+    def __getitem__(self, idx: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
         x_timestep, y_timestep = self.time_pairs[idx]
 
@@ -253,15 +247,12 @@ class Dataset:
         static_data = self.load_static_data()
 
         x_data = np.concatenate([dynamic_data, static_data], axis=-1)
-        target_data = self.load_target_data_for_timestep(y_timestep)
-
-        x_data = self._fill_nan(x_data)
-        target_data = self._fill_nan(target_data)
+        target_data, mask = self.load_target_data_for_timestep(y_timestep)
 
         # finally, flatten everything - our basic sklearn regressor
         # is going to expect a 2d input
         if self.flatten:
-            return x_data.flatten(), target_data.flatten()
+            return x_data.flatten(), target_data.flatten(), mask.flatten()
         else:
             dims = x_data.shape
             x_data = torch.as_tensor(
@@ -270,9 +261,10 @@ class Dataset:
             target_data = torch.as_tensor(
                 target_data.reshape(dims[0] * dims[1]), dtype=torch.float32
             )
-            return x_data, target_data
+            mask_data = torch.as_tensor(mask.reshape(dims[0] * dims[1]), dtype=torch.bool)
+            return x_data, target_data, mask_data
 
-    def load_all_data(self) -> np.ndarray:
+    def load_all_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Return two arrays, with the following shapes:
         x: [num_instances, num_features]
@@ -280,12 +272,14 @@ class Dataset:
         """
         x_list: List[np.ndarray] = []
         y_list: List[np.ndarray] = []
+        mask_list: List[np.ndarray] = []
         for idx in range(len(self)):
-            x, y = self[idx]
+            x, y, mask = self[idx]
             x_list.append(x)
             y_list.append(y)
+            mask_list.append(mask)
 
-        return np.stack(x_list), np.stack(y_list)
+        return np.stack(x_list), np.stack(y_list), np.stack(mask_list)
 
 
 # TODO: When running this file directly, we get an error saying No module named src

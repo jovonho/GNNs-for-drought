@@ -11,6 +11,7 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import r2_score, mean_squared_error
 
 from src.data import Dataset
+from src.utils import filter_preds_test_by_mask
 
 import warnings
 
@@ -64,9 +65,10 @@ def main():
         progress_r2 = []
 
         for i, batch in enumerate(trainloader):
-            X, y_true = batch
+            X, y_true, mask = batch
 
             y_pred = model(X)
+            y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
             loss = criterion(y_pred, y_true)
             r2 = r2_score(y_true.data, y_pred.data)
 
@@ -114,8 +116,9 @@ def main():
     model.eval()
     mse = 0
     r2 = 0
-    for i, (X, y_true) in enumerate(testloader):
+    for i, (X, y_true, mask) in enumerate(testloader):
         preds = model(X)
+        y_true, preds = filter_preds_test_by_mask(preds, y_true, mask)
         r2 += r2_score(y_true.data, preds.data)
         mse += mean_squared_error(y_true.data, preds.data)
 
