@@ -149,6 +149,8 @@ class GCN(nn.Module):
         num_gcn_layers: int,
         adj_learn_features: torch.Tensor,
         adj_learn_dim: int,
+        dropout: float,
+        mlp_dropout: float,
         num_nodes: int = 1575,
         A: np.ndarray = None,
         device: str = "cpu",
@@ -165,7 +167,7 @@ class GCN(nn.Module):
             "activation": F.elu,
             "batch_norm": True,
             "residual": True,
-            "dropout": 0.0,
+            "dropout": dropout,
         }
 
         layers = [GraphConvolution(in_features, hidden_dim, **conv_kwargs)]
@@ -181,7 +183,9 @@ class GCN(nn.Module):
             self.MLP_input_dim = self.MLP_input_dim + hidden_dim * (self.L - 1)
 
         # Set the output dimension of MLP to num_nodes to predict a value for each node
-        self.MLP_layer = MLP(self.MLP_input_dim, num_nodes, [num_nodes])
+        self.MLP_layer = MLP(
+            self.MLP_input_dim, num_nodes, [num_nodes], batch_norm=True, dropout_val=mlp_dropout
+        )
 
         if A is None:
             if verbose:

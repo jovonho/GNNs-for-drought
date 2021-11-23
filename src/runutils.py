@@ -1,8 +1,6 @@
 import time
-import json
 import torch
 import numpy as np
-import pandas as pd
 
 from itertools import product
 from collections import OrderedDict
@@ -52,6 +50,8 @@ class RunManager:
         print(run)
 
     def end_run(self, test_mse):
+        run_duration = time.time() - self.run_start_time
+        self.tb.add_histogram("Run Duration", run_duration)
         self.tb.add_scalar("Testset MSE", test_mse)
         self.tb.flush()
         self.tb.close()
@@ -64,43 +64,34 @@ class RunManager:
         self.epoch_loss = 0
         self.epoch_r2 = []
 
-    def end_epoch(self, num_edges):
+    def end_epoch(self, num_edges, val_mse, val_r2):
 
         epoch_duration = time.time() - self.epoch_start_time
-        run_duration = time.time() - self.run_start_time
 
         total_loss = self.epoch_loss / len(self.loader.dataset)
         epoch_r2 = np.mean(self.epoch_r2)
 
         self.tb.add_scalar("Loss (MSE)", total_loss, self.epoch_count)
-        self.tb.add_scalar("R2", epoch_r2, self.epoch_count)
+        self.tb.add_scalar("Val Loss (MSE)", val_mse, self.epoch_count)
+        self.tb.add_scalar("Epoch R2", epoch_r2, self.epoch_count)
+        self.tb.add_scalar("Val R2", val_r2, self.epoch_count)
+        self.tb.add_scalar("Num Edges", num_edges, self.epoch_count)
+
+        self.tb.add_histogram("Epoch Duration", epoch_duration, self.epoch_count)
 
         for name, weight in self.model.named_parameters():
             try:
                 self.tb.add_histogram(name, weight, self.epoch_count)
                 self.tb.add_histogram(f"{name}.grad", weight.grad, self.epoch_count)
             except ValueError:
-                print("Cauhgt empty model param")
+                print("Caught empty model param")
                 continue
-
-        results = OrderedDict()
-        results["Run"] = self.run_count
-        results["Epoch"] = self.epoch_count
-        results["Loss (MSE)"] = total_loss
-        results["R2"] = epoch_r2
-        results["Num Edges"] = num_edges
-        results["Epoch Duration"] = epoch_duration
-        results["Run Duration"] = run_duration
-
-        for k, v in self.run_params._asdict().items():
-            results[k] = v
-
-        self.run_data.append(results)
 
         print(
             "---------------------------------------------------"
-            f"\t\nEpoch {self.epoch_count}:\n\ttotal MSE:\t{total_loss}\n\t"
-            f"epoch r2:\t{epoch_r2}\n\tnum edges:\t{num_edges}\n"
+            f"\t\nEpoch {self.epoch_count}:\n\tEpoch MSE:\t{total_loss}\n\t"
+            f"Epoch R2:\t{epoch_r2}\n\tNum edges:\t{num_edges}\n\t"
+            f"Validation MSE:\t{val_mse}\n\tValidation R2:\t{val_r2}"
         )
 
     def track_loss(self, loss):
@@ -115,15 +106,15 @@ class RunManager:
     def _get_num_correct(self, preds, labels):
         return preds.argmax(dim=1).eq(labels).sum().item()
 
-    def save(self, filename):
-        df = pd.DataFrame.from_dict(self.run_data, orient="columns").sort_values(
-            "R2", ascending=False
-        )
-        print(df)
-        df.to_csv(f"{filename}.csv")
+    # def save(self, filename):
+    #     df = pd.DataFrame.from_dict(self.run_data, orient="columns").sort_values(
+    #         "R2", ascending=False
+    #     )
+    #     print(df)
+    #     df.to_csv(f"{filename}.csv")
 
-        with open(f"{filename}.json", "w", encoding="utf-8") as f:
-            json.dump(self.run_data, f, indent=4)
+    #     with open(f"{filename}.json", "w", encoding="utf-8") as f:
+    #         json.dump(self.run_data, f, indent=4)
 
 
 if __name__ == "__main__":
