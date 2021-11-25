@@ -40,7 +40,6 @@ class Dataset:
         self.cached_dynamic_means_and_stds: Dict[
             str, Tuple[float, float]
         ] = self._calculate_dynamic_means_and_stds()
-        print(self.cached_dynamic_means_and_stds.keys())
 
         self.time_pairs = self.retrieve_date_tuples()
         self._filter_targets()
@@ -138,7 +137,6 @@ class Dataset:
         if self.is_test:
             common = [x for x in common if self._is_test_time(x)]
         else:
-            print(f"\nCommon time range of datasets: {common[0]} - {common[-1]}")
             common = [x for x in common if not self._is_test_time(x)]
 
         return [(common[idx - 1], common[idx]) for idx in range(1, len(common))]

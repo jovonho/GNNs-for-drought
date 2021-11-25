@@ -6,4 +6,5 @@ __pycache__/
 extra/
 notes
 lightning_logs/
-runs/
+runs*/
+

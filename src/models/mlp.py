@@ -17,9 +17,13 @@ from typing import List
 
 class TrainValDataset(Dataset):
     def __init__(
-        self, data_folder: Path = DATAFOLDER_PATH, is_val: bool = False, val_ratio: float = 0.2
+        self,
+        data_folder: Path = DATAFOLDER_PATH,
+        is_val: bool = False,
+        val_ratio: float = 0.2,
+        **kwargs,
     ) -> None:
-        super().__init__(data_folder, is_test=False)
+        super().__init__(data_folder, is_test=False, **kwargs)
 
         differentiator_index = int(len(self.time_pairs) * (1 - val_ratio))
         if is_val:

@@ -1,11 +1,16 @@
+import re
+import os
 import time
 import torch
 import numpy as np
+import pathlib
 
 from itertools import product
 from collections import OrderedDict
 from collections import namedtuple
 from torch.utils.tensorboard import SummaryWriter
+
+from src.config import RUNS_PATH
 
 
 class RunBuilder:
@@ -37,11 +42,24 @@ class RunManager:
         self.loader = None
         self.tb = None
 
-    def begin_run(self, run, model, loader):
+        pathlib.Path(RUNS_PATH).mkdir(parents=True, exist_ok=True)
+        self.previous_runs = os.listdir(RUNS_PATH)
+
+    def check_run_already_done(self, run) -> bool:
+
+        run_str = re.escape(run.__str__())
+        r = re.compile(rf".*{run_str}")
+
+        matches = list(filter(r.match, self.previous_runs))
+
+        return len(matches) > 0
+
+    def begin_run(self, run, model, loader, device):
         self.run_start_time = time.time()
         self.run_params = run
         self.run_count += 1
 
+        model = model.to(device)
         self.model = model
         self.model.train()
         self.loader = loader
@@ -57,9 +75,10 @@ class RunManager:
         self.tb.close()
         self.epoch_count = 0
 
-    def begin_epoch(self):
+    def begin_epoch(self) -> None:
+        torch.enable_grad()
+        self.model.train()
         self.epoch_start_time = time.time()
-
         self.epoch_count += 1
         self.epoch_loss = 0
         self.epoch_r2 = []
