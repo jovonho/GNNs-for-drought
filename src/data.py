@@ -21,11 +21,15 @@ class Dataset:
         is_test: bool = False,
         flatten: bool = True,
         normalize_targets: bool = True,
+        input_noise_scale: float = 0.0,
+        target_noise_scale: float = 0.0,
     ) -> None:
         self.data_folder = data_folder
         self.is_test = is_test
         self.flatten = flatten
         self.normalize_targets = normalize_targets
+        self.input_noise_scale = input_noise_scale
+        self.target_noise_scale = target_noise_scale
 
         self.dynamic_datasets = self._retrieve_dynamic_interim_datasets()
         self.static_datasets = self._retrieve_static_interim_datasets()
@@ -156,6 +160,9 @@ class Dataset:
 
             target_values = (target_values - target_mean) / target_std
 
+        gaussian_noise = np.random.normal(0, self.target_noise_scale, target_values.shape)
+        target_values += gaussian_noise
+
         return target_values, ~np.isnan(target_values)
 
     def _filter_targets(self) -> None:
@@ -225,6 +232,10 @@ class Dataset:
                         )
                     mean, std = self.cached_static_means_and_stds[var_label]
                     normed_var = (np.nan_to_num(ds[data_var].values, nan=mean) - mean) / std
+
+                    gaussian_noise = np.random.normal(0, self.input_noise_scale, normed_var.shape)
+                    normed_var += gaussian_noise
+
                     arrays_list.append(normed_var)
             self.cached_static_data = np.stack(arrays_list, axis=-1)
         return self.cached_static_data
