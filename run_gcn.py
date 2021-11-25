@@ -21,23 +21,17 @@ warnings.simplefilter("ignore", RuntimeWarning)
 
 def explore_model_params(num_epochs=50, device="cpu"):
 
-    trainset = TrainValDataset(is_val=False, val_ratio=0.07, flatten=False)
-    valset = TrainValDataset(is_val=True, val_ratio=0.07, flatten=False)
-
-    trainset_noise = TrainValDataset(
+    trainset = TrainValDataset(
         is_val=False, val_ratio=0.07, flatten=False, input_noise_scale=0.1, target_noise_scale=0.1
     )
-    valset_noise = TrainValDataset(
+    valset = TrainValDataset(
         is_val=True, val_ratio=0.07, flatten=False, input_noise_scale=0.1, target_noise_scale=0.1
     )
-
     testset = Dataset(is_test=True, flatten=False)
 
-    print(
-        f"Num training samples:\t{len(trainset) + len(trainset_noise)}\n"
-        f"Num Validation samples:\t{len(valset) + len(valset_noise)}\n"
-        f"Num test samples:\t{len(testset)}"
-    )
+    train_size = len(trainset)
+    val_size = len(valset)
+    test_size = len(testset)
 
     # Fill in parameters to explore
     # Will automatically explore all combinations
@@ -46,7 +40,7 @@ def explore_model_params(num_epochs=50, device="cpu"):
         lr=[0.01, 0.005, 0.001],
         hid_dim=[100, 150, 250, 350],
         num_layer=[2],
-        batch_size=[16, 8],
+        batch_size=[8, 16],
         adj_learn_ts=[0, 50, 100, 200, 300],
     )
 
@@ -62,18 +56,30 @@ def explore_model_params(num_epochs=50, device="cpu"):
         # Optionally concatenate the normal and noisy data together
         # By default we train and validate on
         if run.concat_noisy_to_normal:
+            trainset_normal = TrainValDataset(is_val=False, val_ratio=0.07, flatten=False)
+            valset_normal = TrainValDataset(is_val=True, val_ratio=0.07, flatten=False)
+
             # Add the noisy to the normal dataset to augment it
             trainloader = DataLoader(
-                ConcatDataset([trainset, trainset_noise]), batch_size=run.batch_size
+                ConcatDataset([trainset, trainset_normal]), batch_size=run.batch_size
             )
             valloader = DataLoader(
-                ConcatDataset([valset, valset_noise]), batch_size=run.batch_size
+                ConcatDataset([valset, valset_normal]), batch_size=run.batch_size
             )
+
+            train_size += len(trainset_normal)
+            val_size += len(valset_normal)
         else:
-            trainloader = DataLoader(ConcatDataset(trainset_noise), batch_size=run.batch_size)
-            valloader = DataLoader(valset_noise, batch_size=run.batch_size)
+            trainloader = DataLoader(trainset, batch_size=run.batch_size)
+            valloader = DataLoader(valset, batch_size=run.batch_size)
 
         testloader = DataLoader(testset, batch_size=run.batch_size)
+
+        print(
+            f"Num training samples:\t{train_size}\n"
+            f"Num Validation samples:\t{val_size}\n"
+            f"Num test samples:\t{test_size}"
+        )
 
         adj_learn_features = trainset.get_adj_learning_features(num_timestamps=run.adj_learn_ts)
 
