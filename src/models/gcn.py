@@ -7,7 +7,6 @@
 
 import math
 import torch
-import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from src.models.mlp import MLP
@@ -20,14 +19,14 @@ class AdjacencyLearner(nn.Module):
 
     def __init__(
         self,
-        num_nodes: int,
-        max_num_edges: int,
-        dim: int,
-        static_features: torch.Tensor,
-        device: str = "cpu",
-        alpha1: float = 0.1,
-        alpha2: float = 2.0,
-        self_loops: bool = True,
+        num_nodes,
+        max_num_edges,
+        dim,
+        static_features,
+        device="cpu",
+        alpha1=0.1,
+        alpha2=2.0,
+        self_loops=True,
     ):
         super().__init__()
         if static_features is None:
@@ -74,13 +73,13 @@ class AdjacencyLearner(nn.Module):
 class GraphConvolution(nn.Module):
     def __init__(
         self,
-        in_features: int,
-        out_features: int,
-        residual: bool = False,
-        batch_norm: bool = False,
-        activation: F = F.elu,
-        dropout: float = 0,
-        bias: bool = True,
+        in_features,
+        out_features,
+        residual=False,
+        batch_norm=False,
+        activation=F.elu,
+        dropout=0,
+        bias=True,
     ):
         super().__init__()
         self.in_features = in_features
@@ -143,22 +142,18 @@ class GraphConvolution(nn.Module):
 class GCN(nn.Module):
     def __init__(
         self,
-        in_features: int,
-        hidden_dim: int,
-        out_dim: int,
-        num_gcn_layers: int,
-        adj_learn_features: torch.Tensor,
-        adj_learn_dim: int,
-        dropout: float = 0.0,
-        mlp_dropout: float = 0.0,
-        num_nodes: int = 1575,
-        A: np.ndarray = None,
-        device: str = "cpu",
-        verbose: bool = False,
+        in_features,
+        hidden_dim,
+        num_layer,
+        adj_learn_features,
+        num_nodes=1575,
+        A=None,
+        device="cpu",
+        verbose=True,
     ):
         super().__init__()
-        self.L = num_gcn_layers
-        self.out_dim = self.MLP_input_dim = out_dim
+        self.L = num_layer
+        self.out_dim = self.MLP_input_dim = 100
         self.batch_norm = True
         self.graph_pooling = "mean"
         self.jumping_knowledge = True
@@ -167,7 +162,7 @@ class GCN(nn.Module):
             "activation": F.elu,
             "batch_norm": True,
             "residual": True,
-            "dropout": dropout,
+            "dropout": 0.0,
         }
 
         layers = [GraphConvolution(in_features, hidden_dim, **conv_kwargs)]
@@ -183,13 +178,10 @@ class GCN(nn.Module):
             self.MLP_input_dim = self.MLP_input_dim + hidden_dim * (self.L - 1)
 
         # Set the output dimension of MLP to num_nodes to predict a value for each node
-        self.MLP_layer = MLP(
-            self.MLP_input_dim, num_nodes, [num_nodes], batch_norm=True, dropout_val=mlp_dropout
-        )
+        self.MLP_layer = MLP(self.MLP_input_dim, num_nodes, [num_nodes])
 
         if A is None:
-            if verbose:
-                print("We will be learning the adjancency matrix")
+            print("We will be learning the adjancency matrix")
             self.A, self.learn_adj = None, True
             # Cap the max number of edges.
             max_num_edges = 8 * num_nodes
@@ -197,7 +189,7 @@ class GCN(nn.Module):
             self.adj_learner = AdjacencyLearner(
                 num_nodes,
                 max_num_edges,
-                dim=adj_learn_dim,
+                dim=50,
                 device=device,
                 static_features=adj_learn_features,
                 alpha1=0.1,

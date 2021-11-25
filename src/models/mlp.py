@@ -17,13 +17,9 @@ from typing import List
 
 class TrainValDataset(Dataset):
     def __init__(
-        self,
-        data_folder: Path = DATAFOLDER_PATH,
-        is_val: bool = False,
-        val_ratio: float = 0.2,
-        flatten: bool = True,
+        self, data_folder: Path = DATAFOLDER_PATH, is_val: bool = False, val_ratio: float = 0.2
     ) -> None:
-        super().__init__(data_folder, is_test=False, flatten=flatten)
+        super().__init__(data_folder, is_test=False)
 
         differentiator_index = int(len(self.time_pairs) * (1 - val_ratio))
         if is_val:
@@ -33,14 +29,7 @@ class TrainValDataset(Dataset):
 
 
 class MLP(nn.Module):
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        hidden_vector_sizes: List,
-        batch_norm: bool = False,
-        dropout_val: float = 0.2,
-    ) -> None:
+    def __init__(self, in_features: int, out_features: int, hidden_vector_sizes: List) -> None:
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
@@ -49,23 +38,10 @@ class MLP(nn.Module):
         hidden_vector_sizes.append(out_features)
 
         model_layers = []
-        for idx in range(len(hidden_vector_sizes) - 2):
+        for idx in range(len(hidden_vector_sizes) - 1):
             model_layers.extend(
-                [
-                    nn.Linear(hidden_vector_sizes[idx], hidden_vector_sizes[idx + 1]),
-                    nn.ReLU(),
-                    nn.Dropout(p=dropout_val),
-                    nn.BatchNorm1d(hidden_vector_sizes[idx + 1]),
-                ]
+                [nn.Linear(hidden_vector_sizes[idx], hidden_vector_sizes[idx + 1]), nn.ReLU()]
             )
-        # Append the last layer without dropout or batchnorm
-        idx = len(hidden_vector_sizes) - 2
-        model_layers.extend(
-            [
-                nn.Linear(hidden_vector_sizes[idx], hidden_vector_sizes[idx + 1]),
-                nn.ReLU(),
-            ]
-        )
         self.layers = nn.Sequential(*model_layers)
 
     def forward(self, x):

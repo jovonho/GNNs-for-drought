@@ -16,11 +16,8 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import r2_score, mean_squared_error
 
 from src.data import Dataset
-<<<<<<< HEAD
 from src.utils import filter_preds_test_by_mask
-=======
 from src.config import MODELS_PATH, RUNS_PATH
->>>>>>> dev/param-search
 
 import warnings
 
@@ -195,9 +192,6 @@ def explore_model_params(num_epochs=50):
             run.out_dim,
             run.num_layer,
             adj_learn_features=adj_learn_features,
-            adj_learn_dim=run.adj_learn_dim,
-            dropout=run.dropout,
-            mlp_dropout=run.mlp_dropout,
         )
         model = model.to(device)
         model.train()
@@ -274,5 +268,5 @@ def explore_model_params(num_epochs=50):
 
 if __name__ == "__main__":
 
-    # main()
-    explore_model_params(50)
+    main()
+    # explore_model_params(50)
