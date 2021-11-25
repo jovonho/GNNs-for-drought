@@ -1,4 +1,3 @@
-import time
 import torch
 import numpy as np
 import torch.nn as nn
@@ -9,7 +8,6 @@ from collections import OrderedDict
 from torch.utils.data import DataLoader, ConcatDataset
 from src.models.mlp import TrainValDataset
 from src.runutils import RunBuilder, RunManager
-from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import r2_score, mean_squared_error
 
 from src.data import Dataset
@@ -44,6 +42,7 @@ def explore_model_params(num_epochs=50, device="cpu"):
     # Fill in parameters to explore
     # Will automatically explore all combinations
     params = OrderedDict(
+        concat_noisy_to_normal=[False],
         lr=[0.01, 0.005, 0.001],
         hid_dim=[100, 150, 250, 350],
         num_layer=[2],
@@ -60,12 +59,22 @@ def explore_model_params(num_epochs=50, device="cpu"):
             print(f"Already ran {run}\nSkipping")
             continue
 
-        # Add the noisy to the normal dataset to augment it
-        trainloader = DataLoader(
-            ConcatDataset([trainset, trainset_noise]), batch_size=run.batch_size
-        )
-        valloader = DataLoader(ConcatDataset([valset, valset_noise]), batch_size=run.batch_size)
+        # Optionally concatenate the normal and noisy data together
+        # By default we train and validate on
+        if run.concat_noisy_to_normal:
+            # Add the noisy to the normal dataset to augment it
+            trainloader = DataLoader(
+                ConcatDataset([trainset, trainset_noise]), batch_size=run.batch_size
+            )
+            valloader = DataLoader(
+                ConcatDataset([valset, valset_noise]), batch_size=run.batch_size
+            )
+        else:
+            trainloader = DataLoader(ConcatDataset(trainset_noise), batch_size=run.batch_size)
+            valloader = DataLoader(valset_noise, batch_size=run.batch_size)
+
         testloader = DataLoader(testset, batch_size=run.batch_size)
+
         adj_learn_features = trainset.get_adj_learning_features(num_timestamps=run.adj_learn_ts)
 
         model = GCN(
