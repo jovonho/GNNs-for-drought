@@ -114,15 +114,16 @@ def main():
 
     # Evaluate on test set
     model.eval()
-    mse = 0
-    r2 = 0
+    mse = []
+    r2 = []
     for i, (X, y_true, mask) in enumerate(testloader):
         preds = model(X)
         y_true, preds = filter_preds_test_by_mask(preds, y_true, mask)
-        r2 += r2_score(y_true.data, preds.data)
-        mse += mean_squared_error(y_true.data, preds.data)
+        r2.append(r2_score(y_true.data, preds.data))
+        mse.append(mean_squared_error(y_true.data, preds.data))
 
     r2 = np.mean(r2)
+    mse = np.mean(mse)
     print(f"Test Set:\n\tMSE {mse}\n\tR2 {r2}")
 
 

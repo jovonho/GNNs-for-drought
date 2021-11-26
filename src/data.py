@@ -194,6 +194,15 @@ class Dataset:
                 )
         return output_dict
 
+    @property
+    def variables_in_x(self) -> List[str]:
+        output_vars: List[str] = []
+        for dataset in self.dynamic_datasets:
+            ds = xr.open_dataset(self.data_folder / "interim" / dataset / "data_kenya.nc")
+            variables = sorted(list(ds.data_vars))
+            output_vars.extend(variables)
+        return output_vars
+
     def load_dynamic_data_for_timestep(self, timestep: str) -> np.ndarray:
         arrays_list: List[np.ndarray] = []
 
