@@ -22,8 +22,10 @@ def main():
 
     t1 = time.time()
 
-    trainset = Dataset(is_test=False, flatten=False)
-    testset = Dataset(is_test=True, flatten=False)
+    device = "cpu"
+
+    trainset = Dataset(is_test=False, flatten=False, device=device)
+    testset = Dataset(is_test=True, flatten=False, device=device)
 
     num_samples = len(trainset)
 
@@ -33,7 +35,6 @@ def main():
 
     lr = 0.005
     epochs = 20
-    device = "cpu"
     batch_size = 32
 
     # Num workers doesn't work with these
