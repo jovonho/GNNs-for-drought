@@ -6,8 +6,9 @@ import numpy as np
 import pathlib
 
 from itertools import product
-from collections import OrderedDict
 from collections import namedtuple
+from datetime import datetime as dt
+from collections import OrderedDict
 from torch.utils.tensorboard import SummaryWriter
 
 from src.config import RUNS_PATH
@@ -55,6 +56,7 @@ class RunManager:
         return len(matches) > 0
 
     def begin_run(self, run, model, loader, device):
+        self.run = run
         self.run_start_time = time.time()
         self.run_params = run
         self.run_count += 1
@@ -63,16 +65,21 @@ class RunManager:
         self.model = model
         self.model.train()
         self.loader = loader
-        self.tb = SummaryWriter(comment=f"-{run}")
+        run_date = dt.today().strftime("%Y-%m-%d")
+        self.tb = SummaryWriter(log_dir=f"runs/{run_date}-{run}")
 
         print(run)
 
-    def end_run(self, test_mse):
+    def end_run(self, test_mse, test_r2):
         run_duration = time.time() - self.run_start_time
         self.tb.add_histogram("Run Duration", run_duration)
         self.tb.add_scalar("Testset MSE", test_mse)
         self.tb.flush()
         self.tb.close()
+
+        with open("all_runs.txt", "a") as out:
+            out.write(f"{self.run}\n\tMSE:\t{test_mse}\n\tR2: \t{test_r2}\n\n")
+
         self.epoch_count = 0
 
     def begin_epoch(self) -> None:
