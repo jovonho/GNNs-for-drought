@@ -18,15 +18,16 @@ import warnings
 warnings.simplefilter("ignore", RuntimeWarning)
 
 
-def explore_model_params(num_epochs=50, device="cpu", validation=False):
+def get_datasets(val=False, concat_noisy_to_normal=False):
 
-    if validation:
+    if val:
         trainset = TrainValDataset(
             is_val=False,
             val_ratio=0.07,
             flatten=False,
             input_noise_scale=0.1,
             target_noise_scale=0.1,
+            device=device,
         )
 
         valset = TrainValDataset(
@@ -35,18 +36,65 @@ def explore_model_params(num_epochs=50, device="cpu", validation=False):
             flatten=False,
             input_noise_scale=0.1,
             target_noise_scale=0.1,
+            device=device,
         )
         val_size = len(valset)
     else:
         trainset = Dataset(
-            is_test=False, flatten=False, input_noise_scale=0.1, target_noise_scale=0.1
+            is_test=False,
+            flatten=False,
+            input_noise_scale=0.1,
+            target_noise_scale=0.1,
+            device=device,
         )
         val_size = 0
 
-    testset = Dataset(is_test=True, flatten=False)
+    testset = Dataset(is_test=True, flatten=False, device=device)
 
     train_size = len(trainset)
     test_size = len(testset)
+
+    # Optionally concatenate the normal and noisy data together
+    # By default we train and validate on
+    if concat_noisy_to_normal:
+        if val:
+            trainset_normal = TrainValDataset(
+                is_val=False, val_ratio=0.07, flatten=False, device=device
+            )
+            valset_normal = TrainValDataset(
+                is_val=True, val_ratio=0.07, flatten=False, device=device
+            )
+            trainset = ConcatDataset([trainset, trainset_normal])
+            valset = ConcatDataset([valset, valset_normal])
+            val_size += len(valset_normal)
+        else:
+            trainset_normal = Dataset(is_val=False, flatten=False, device=device)
+            trainset = ConcatDataset([trainset, trainset_normal])
+
+        train_size += len(trainset_normal)
+
+    print(
+        f"Num training samples:\t{train_size}\n"
+        f"Num validation samples:\t{val_size}\n"
+        f"Num test samples:\t{test_size}"
+    )
+
+    if val:
+        return trainset, valset, testset
+    else:
+        return trainset, testset
+
+
+def explore_model_params(
+    num_epochs=50, device="cpu", val=False, concat_noisy_to_normal=False, verbose=True
+):
+
+    if val:
+        trainset, valset, testset = get_datasets(
+            val=True, concat_noisy_to_normal=concat_noisy_to_normal
+        )
+    else:
+        trainset, testset = get_datasets(concat_noisy_to_normal=concat_noisy_to_normal)
 
     # Fill in parameters to explore
     # Will automatically explore all combinations
@@ -55,10 +103,10 @@ def explore_model_params(num_epochs=50, device="cpu", validation=False):
         hid_dim=[100, 150, 250, 350],
         num_layer=[2],
         batch_size=[8, 16],
-        adj_learn_ts=[0, 50, 100, 200, 300],
+        adj_learn_ts=[0, 25, 50, 100, 200, 300],
     )
 
-    m = RunManager()
+    m = RunManager(val=val, verbose=verbose)
 
     for run in RunBuilder.get_runs(params):
 
@@ -69,30 +117,22 @@ def explore_model_params(num_epochs=50, device="cpu", validation=False):
 
         trainloader = DataLoader(trainset, batch_size=run.batch_size)
 
-        if validation:
+        if val:
             valloader = DataLoader(valset, batch_size=run.batch_size)
 
         testloader = DataLoader(testset, batch_size=run.batch_size)
 
-        print(
-            f"Num training samples:\t{train_size}\n"
-            f"Num Validation samples:\t{val_size}\n"
-            f"Num test samples:\t{test_size}"
-        )
-
         adj_learn_features = trainset.get_adj_learning_features(num_timestamps=run.adj_learn_ts)
 
         model = GCN(
-            7,
-            run.hid_dim,
-            run.num_layer,
-            adj_learn_features=adj_learn_features,
+            7, run.hid_dim, run.num_layer, adj_learn_features=adj_learn_features, devive=device
         )
+        model.to(device)
 
         optimizer = optim.Adam(model.parameters(), lr=run.lr)
         criterion = nn.MSELoss(reduction="mean")
 
-        m.begin_run(run, model, trainloader, device)
+        m.begin_run(run, model, trainloader)
 
         print(f"Running model on: {next(model.parameters()).device}")
 
@@ -103,6 +143,10 @@ def explore_model_params(num_epochs=50, device="cpu", validation=False):
             m.begin_epoch()
 
             for _, (X, y_true, mask) in enumerate(trainloader):
+
+                X.to(device)
+                y_true.to(device)
+
                 y_pred = model(X)
                 y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
                 loss = criterion(y_pred, y_true)
@@ -119,11 +163,13 @@ def explore_model_params(num_epochs=50, device="cpu", validation=False):
             torch.no_grad()
             model.eval()
 
-            if validation:
-                # Validate
-                val_r2 = []
+            if val:
                 val_mse = 0
+                val_r2 = []
                 for _, (X, y_true, mask) in enumerate(valloader):
+                    X.to(device)
+                    y_true.to(device)
+
                     y_pred = model(X)
                     y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
                     # Multiply the MSE by each batch size, we will divide by n after
@@ -132,13 +178,17 @@ def explore_model_params(num_epochs=50, device="cpu", validation=False):
 
                 val_mse = val_mse / len(valset)
                 val_r2 = np.mean(val_r2)
-                num_edges = len(torch.nonzero(model.A.detach(), as_tuple=False))
-                m.end_epoch(num_edges, val_mse, val_r2)
+                m.end_epoch(val_mse, val_r2)
+            else:
+                m.end_epoch()
 
         # Evaluate model on test set
         test_mse = 0
         test_r2 = []
         for _, (X, y_true, mask) in enumerate(testloader):
+            X.to(device)
+            y_true.to(device)
+
             y_pred = model(X)
             y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
 
@@ -148,17 +198,8 @@ def explore_model_params(num_epochs=50, device="cpu", validation=False):
         test_mse = round(test_mse / len(testset), 2)
         test_r2 = round(np.mean(test_r2), 2)
 
-        print(f"Test Set:\n\tMSE {test_mse}\n\tR2 {test_r2}\n")
-
-        # if test_mse < 500:
-        #     print(f"Test set MSE of {test_mse} is under 500. Saving model.")
-        #     MODELS_FILENAME = f"GCN-{num_epochs}epochs-TestMSE={test_mse}-{run}.pth"
-        #     torch.save(
-        #         model,
-        #         MODELS_PATH / MODELS_FILENAME,
-        #     )
-
-        m.end_run(test_mse)
+        # switch save_model to save models that have MSE < 1 and R2 < 1
+        m.end_run(test_mse, test_r2, save_model=True)
 
 
 if __name__ == "__main__":
@@ -166,3 +207,16 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     explore_model_params(num_epochs=1, device=device)
+
+    # Adj is saved with model
+    # model = torch.load(
+    #     "models\GCN-1ep-MSE=0.82-TestR2=-21.09-Run(lr=0.01, hid_dim=150, num_layer=2, batch_size=8, adj_learn_ts=25).pth"
+    # )
+
+    # import networkx as nx
+
+    # A = model.A.detach().numpy()
+    # A = nx.from_numpy_array(A)
+    # num_edges = A.number_of_edges()
+
+    # print(num_edges)

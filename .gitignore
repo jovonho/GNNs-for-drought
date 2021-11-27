@@ -7,4 +7,5 @@ extra/
 notes
 lightning_logs/
 runs*/
-
+models/
+all_runs.txt
