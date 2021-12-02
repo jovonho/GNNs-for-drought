@@ -54,8 +54,8 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
     train_size = len(trainset)
     test_size = len(testset)
 
-    # Optionally concatenate the normal and noisy data together
-    # By default we train and validate on
+    # Optionally concatenate the normal and noisy data
+    # to double the number of training samples.
     if concat_noisy_to_normal:
         if val:
             trainset_normal = TrainValDataset(
@@ -70,6 +70,7 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
         else:
             trainset_normal = Dataset(is_val=False, flatten=False, device=device)
             trainset = ConcatDataset([trainset, trainset_normal])
+            valset = None
 
         train_size += len(trainset_normal)
 
@@ -79,22 +80,24 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
         f"Num test samples:\t{test_size}"
     )
 
-    if val:
-        return trainset, valset, testset
+    if concat_noisy_to_normal:
+        # return trainset_normal to get the adjacency learning features from
+        # TODO: change the design so we don't have to do this
+        return trainset, valset, testset, trainset_normal
     else:
-        return trainset, testset
+        return trainset, valset, testset, None
 
 
 def explore_model_params(
     num_epochs=50, device="cpu", val=False, concat_noisy_to_normal=False, verbose=True
 ):
 
-    if val:
-        trainset, valset, testset = get_datasets(
+    if concat_noisy_to_normal:
+        trainset, valset, testset, adj_features_set = get_datasets(
             val=True, concat_noisy_to_normal=concat_noisy_to_normal
         )
     else:
-        trainset, testset = get_datasets(concat_noisy_to_normal=concat_noisy_to_normal)
+        trainset, valset, testset = get_datasets(concat_noisy_to_normal=concat_noisy_to_normal)
 
     # Fill in parameters to explore
     # Will automatically explore all combinations
@@ -122,10 +125,17 @@ def explore_model_params(
 
         testloader = DataLoader(testset, batch_size=run.batch_size)
 
-        adj_learn_features = trainset.get_adj_learning_features(num_timestamps=run.adj_learn_ts)
+        if concat_noisy_to_normal:
+            adj_learn_features = adj_features_set.get_adj_learning_features(
+                num_timestamps=run.adj_learn_ts
+            )
+        else:
+            adj_learn_features = trainset.get_adj_learning_features(
+                num_timestamps=run.adj_learn_ts
+            )
 
         model = GCN(
-            7, run.hid_dim, run.num_layer, adj_learn_features=adj_learn_features, devive=device
+            7, run.hid_dim, run.num_layer, adj_learn_features=adj_learn_features, device=device
         )
         model.to(device)
 
@@ -143,9 +153,6 @@ def explore_model_params(
             m.begin_epoch()
 
             for _, (X, y_true, mask) in enumerate(trainloader):
-
-                X.to(device)
-                y_true.to(device)
 
                 y_pred = model(X)
                 y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
@@ -167,8 +174,6 @@ def explore_model_params(
                 val_mse = 0
                 val_r2 = []
                 for _, (X, y_true, mask) in enumerate(valloader):
-                    X.to(device)
-                    y_true.to(device)
 
                     y_pred = model(X)
                     y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
@@ -186,8 +191,6 @@ def explore_model_params(
         test_mse = 0
         test_r2 = []
         for _, (X, y_true, mask) in enumerate(testloader):
-            X.to(device)
-            y_true.to(device)
 
             y_pred = model(X)
             y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
@@ -204,19 +207,7 @@ def explore_model_params(
 
 if __name__ == "__main__":
 
+    # TODO: Cuda support does not work
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    explore_model_params(num_epochs=1, device=device)
-
-    # Adj is saved with model
-    # model = torch.load(
-    #     "models\GCN-1ep-MSE=0.82-TestR2=-21.09-Run(lr=0.01, hid_dim=150, num_layer=2, batch_size=8, adj_learn_ts=25).pth"
-    # )
-
-    # import networkx as nx
-
-    # A = model.A.detach().numpy()
-    # A = nx.from_numpy_array(A)
-    # num_edges = A.number_of_edges()
-
-    # print(num_edges)
+    explore_model_params(num_epochs=1, device=device, val=False, concat_noisy_to_normal=False)

@@ -94,7 +94,8 @@ class RunManager:
         if save_model:
             if test_mse < 1 and test_r2 < 1:
                 print(
-                    f"Test MSE {test_mse} < 1 and R2 {test_r2} < 100. Saving model and Adjacency matrix"
+                    f"Test MSE {test_mse} < 1 and R2 {test_r2} < 100."
+                    f"Saving model and Adjacency matrix"
                 )
                 MODEL_FILENAME = (
                     f"GCN-{self.epoch_count}ep-MSE={test_mse}-TestR2={test_r2}-{self.run}.pth"

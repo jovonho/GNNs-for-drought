@@ -206,8 +206,14 @@ class Dataset:
                 variable = ds[data_var]
                 var_label = f"{dataset}_{data_var}"
                 mean, std = self.cached_dynamic_means_and_stds[var_label]
+
                 var_at_ts = np.nan_to_num(variable.sel(time=timestep).values, nan=mean)
-                arrays_list.append((var_at_ts - mean) / std)
+                normed_var = (var_at_ts - mean) / std
+
+                gaussian_noise = np.random.normal(0, self.input_noise_scale, normed_var.shape)
+                normed_var += gaussian_noise
+
+                arrays_list.append(normed_var)
 
         return np.stack(arrays_list, axis=-1)
 
