@@ -27,7 +27,6 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
             flatten=False,
             input_noise_scale=0.1,
             target_noise_scale=0.1,
-            device=device,
         )
 
         valset = TrainValDataset(
@@ -36,7 +35,6 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
             flatten=False,
             input_noise_scale=0.1,
             target_noise_scale=0.1,
-            device=device,
         )
         val_size = len(valset)
     else:
@@ -45,11 +43,10 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
             flatten=False,
             input_noise_scale=0.1,
             target_noise_scale=0.1,
-            device=device,
         )
         val_size = 0
 
-    testset = Dataset(is_test=True, flatten=False, device=device)
+    testset = Dataset(is_test=True, flatten=False)
 
     train_size = len(trainset)
     test_size = len(testset)
@@ -58,17 +55,13 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
     # to double the number of training samples.
     if concat_noisy_to_normal:
         if val:
-            trainset_normal = TrainValDataset(
-                is_val=False, val_ratio=0.07, flatten=False, device=device
-            )
-            valset_normal = TrainValDataset(
-                is_val=True, val_ratio=0.07, flatten=False, device=device
-            )
+            trainset_normal = TrainValDataset(is_val=False, val_ratio=0.07, flatten=False)
+            valset_normal = TrainValDataset(is_val=True, val_ratio=0.07, flatten=False)
             trainset = ConcatDataset([trainset, trainset_normal])
             valset = ConcatDataset([valset, valset_normal])
             val_size += len(valset_normal)
         else:
-            trainset_normal = Dataset(is_val=False, flatten=False, device=device)
+            trainset_normal = Dataset(is_val=False, flatten=False)
             trainset = ConcatDataset([trainset, trainset_normal])
             valset = None
 
@@ -91,6 +84,7 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
 def explore_model_params(
     num_epochs=50, device="cpu", val=False, concat_noisy_to_normal=False, verbose=True
 ):
+    t_device = torch.device(device if (torch.cuda.is_available() and "cuda" in device) else "cpu")
 
     if concat_noisy_to_normal:
         trainset, valset, testset, adj_features_set = get_datasets(
@@ -154,8 +148,8 @@ def explore_model_params(
 
             for _, (X, y_true, mask) in enumerate(trainloader):
 
-                y_pred = model(X)
-                y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
+                y_pred = model(X.to(t_device))
+                y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true.to(t_device), mask)
                 loss = criterion(y_pred, y_true)
                 batch_r2 = r2_score(y_true.data, y_pred.data)
 
@@ -175,8 +169,8 @@ def explore_model_params(
                 val_r2 = []
                 for _, (X, y_true, mask) in enumerate(valloader):
 
-                    y_pred = model(X)
-                    y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
+                    y_pred = model(X.to(t_device))
+                    y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true.to(t_device), mask)
                     # Multiply the MSE by each batch size, we will divide by n after
                     val_mse += mean_squared_error(y_true.data, y_pred.data) * X.shape[0]
                     val_r2.append(r2_score(y_true.data, y_pred.data))
@@ -192,8 +186,8 @@ def explore_model_params(
         test_r2 = []
         for _, (X, y_true, mask) in enumerate(testloader):
 
-            y_pred = model(X)
-            y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
+            y_pred = model(X.to(t_device))
+            y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true.to(t_device), mask)
 
             test_mse += mean_squared_error(y_true.data, y_pred.data) * X.shape[0]
             test_r2.append(r2_score(y_true.data, y_pred.data))
@@ -207,7 +201,6 @@ def explore_model_params(
 
 if __name__ == "__main__":
 
-    # TODO: Cuda support does not work
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     explore_model_params(num_epochs=1, device=device, val=False, concat_noisy_to_normal=False)
