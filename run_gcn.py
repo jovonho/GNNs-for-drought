@@ -20,6 +20,7 @@ warnings.simplefilter("ignore", RuntimeWarning)
 
 def get_datasets(val=False, concat_noisy_to_normal=False):
 
+<<<<<<< HEAD
     if val:
         trainset = TrainValDataset(
             is_val=False,
@@ -29,6 +30,14 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
             target_noise_scale=0.1,
             device=device,
         )
+=======
+    t1 = time.time()
+
+    device = "cpu"
+
+    trainset = Dataset(is_test=False, flatten=False, device=device)
+    testset = Dataset(is_test=True, flatten=False, device=device)
+>>>>>>> main
 
         valset = TrainValDataset(
             is_val=True,
@@ -87,6 +96,12 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
     else:
         return trainset, valset, testset, None
 
+<<<<<<< HEAD
+=======
+    lr = 0.005
+    epochs = 20
+    batch_size = 32
+>>>>>>> main
 
 def explore_model_params(
     num_epochs=50, device="cpu", val=False, concat_noisy_to_normal=False, verbose=True
@@ -159,6 +174,7 @@ def explore_model_params(
                 loss = criterion(y_pred, y_true)
                 batch_r2 = r2_score(y_true.data, y_pred.data)
 
+<<<<<<< HEAD
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -203,6 +219,21 @@ def explore_model_params(
 
         # switch save_model to save models that have MSE < 1 and R2 < 1
         m.end_run(test_mse, test_r2, save_model=True)
+=======
+    # Evaluate on test set
+    model.eval()
+    mse = []
+    r2 = []
+    for i, (X, y_true, mask) in enumerate(testloader):
+        preds = model(X)
+        y_true, preds = filter_preds_test_by_mask(preds, y_true, mask)
+        r2.append(r2_score(y_true.data, preds.data))
+        mse.append(mean_squared_error(y_true.data, preds.data))
+
+    r2 = np.mean(r2)
+    mse = np.mean(mse)
+    print(f"Test Set:\n\tMSE {mse}\n\tR2 {r2}")
+>>>>>>> main
 
 
 if __name__ == "__main__":
