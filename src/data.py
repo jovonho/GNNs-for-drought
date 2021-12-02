@@ -25,10 +25,6 @@ class Dataset:
         target_noise_scale: float = 0.0,
         device: str = "cpu",
     ) -> None:
-<<<<<<< HEAD
-=======
-
->>>>>>> main
         self.device = torch.device(
             device if (torch.cuda.is_available() and "cuda" in device) else "cpu"
         )
