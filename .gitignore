@@ -8,4 +8,5 @@ notes
 lightning_logs/
 runs*/
 models/
+!src/models
 all_runs.txt
