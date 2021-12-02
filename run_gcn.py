@@ -23,9 +23,10 @@ def main():
     t1 = time.time()
 
     device = "cpu"
+    t_device = torch.device(device if (torch.cuda.is_available() and "cuda" in device) else "cpu")
 
-    trainset = Dataset(is_test=False, flatten=False, device=device)
-    testset = Dataset(is_test=True, flatten=False, device=device)
+    trainset = Dataset(is_test=False, flatten=False)
+    testset = Dataset(is_test=True, flatten=False)
 
     num_samples = len(trainset)
 
@@ -68,8 +69,8 @@ def main():
         for i, batch in enumerate(trainloader):
             X, y_true, mask = batch
 
-            y_pred = model(X)
-            y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true, mask)
+            y_pred = model(X.to(t_device))
+            y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true.to(t_device), mask)
             loss = criterion(y_pred, y_true)
             r2 = r2_score(y_true.data, y_pred.data)
 

@@ -23,12 +23,8 @@ class Dataset:
         normalize_targets: bool = True,
         input_noise_scale: float = 0.0,
         target_noise_scale: float = 0.0,
-        device: str = "cpu",
     ) -> None:
 
-        self.device = torch.device(
-            device if (torch.cuda.is_available() and "cuda" in device) else "cpu"
-        )
         self.data_folder = data_folder
         self.is_test = is_test
         self.flatten = flatten
