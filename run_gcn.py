@@ -44,6 +44,7 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
             input_noise_scale=0.1,
             target_noise_scale=0.1,
         )
+        valset = None
         val_size = 0
 
     testset = Dataset(is_test=True, flatten=False)
@@ -61,9 +62,8 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
             valset = ConcatDataset([valset, valset_normal])
             val_size += len(valset_normal)
         else:
-            trainset_normal = Dataset(is_val=False, flatten=False)
+            trainset_normal = Dataset(is_test=False, flatten=False)
             trainset = ConcatDataset([trainset, trainset_normal])
-            valset = None
 
         train_size += len(trainset_normal)
 
@@ -78,7 +78,7 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
         # TODO: change the design so we don't have to do this
         return trainset, valset, testset, trainset_normal
     else:
-        return trainset, valset, testset, None
+        return trainset, valset, testset
 
 
 def explore_model_params(
@@ -88,10 +88,12 @@ def explore_model_params(
 
     if concat_noisy_to_normal:
         trainset, valset, testset, adj_features_set = get_datasets(
-            val=True, concat_noisy_to_normal=concat_noisy_to_normal
+            val=val, concat_noisy_to_normal=concat_noisy_to_normal
         )
     else:
-        trainset, valset, testset = get_datasets(concat_noisy_to_normal=concat_noisy_to_normal)
+        trainset, valset, testset = get_datasets(
+            val=val, concat_noisy_to_normal=concat_noisy_to_normal
+        )
 
     # Fill in parameters to explore
     # Will automatically explore all combinations
@@ -203,4 +205,4 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    explore_model_params(num_epochs=1, device=device, val=False, concat_noisy_to_normal=False)
+    explore_model_params(num_epochs=1, device=device, val=True, concat_noisy_to_normal=True)
