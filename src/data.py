@@ -41,7 +41,6 @@ class Dataset:
         self.cached_dynamic_means_and_stds: Dict[
             str, Tuple[float, float]
         ] = self._calculate_dynamic_means_and_stds()
-        print(self.cached_dynamic_means_and_stds.keys())
 
         self.time_pairs = self.retrieve_date_tuples()
         self._filter_targets()
@@ -139,10 +138,8 @@ class Dataset:
         if self.is_test:
             common = [x for x in common if self._is_test_time(x)]
         else:
-            print(f"\nCommon time range of datasets: {common[0]} - {common[-1]}")
             common = [x for x in common if not self._is_test_time(x)]
 
-        print(f"{'Test' if self.is_test else 'Train'} set time range {common[0]} - {common[-1]}")
         return [(common[idx - 1], common[idx]) for idx in range(1, len(common))]
 
     def load_target_data_for_timestep(self, timestep: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -215,8 +212,14 @@ class Dataset:
                 variable = ds[data_var]
                 var_label = f"{dataset}_{data_var}"
                 mean, std = self.cached_dynamic_means_and_stds[var_label]
+
                 var_at_ts = np.nan_to_num(variable.sel(time=timestep).values, nan=mean)
-                arrays_list.append((var_at_ts - mean) / std)
+                normed_var = (var_at_ts - mean) / std
+
+                gaussian_noise = np.random.normal(0, self.input_noise_scale, normed_var.shape)
+                normed_var += gaussian_noise
+
+                arrays_list.append(normed_var)
 
         return np.stack(arrays_list, axis=-1)
 

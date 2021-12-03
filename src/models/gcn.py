@@ -149,7 +149,7 @@ class GCN(nn.Module):
         num_nodes=1575,
         A=None,
         device="cpu",
-        verbose=True,
+        verbose=False,
     ):
         super().__init__()
         self.L = num_layer
