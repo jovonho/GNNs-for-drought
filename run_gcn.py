@@ -205,4 +205,4 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    explore_model_params(num_epochs=1, device=device, val=True, concat_noisy_to_normal=True)
+    explore_model_params(num_epochs=50, device=device, val=False, concat_noisy_to_normal=False)
