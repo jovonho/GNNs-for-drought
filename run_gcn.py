@@ -131,7 +131,12 @@ def explore_model_params(
             )
 
         model = GCN(
-            7, run.hid_dim, run.num_layer, adj_learn_features=adj_learn_features, device=device
+            7,
+            run.hid_dim,
+            run.num_layer,
+            adj_learn_features=adj_learn_features,
+            device=device,
+            no_pooling=True,
         )
         model.to(device)
 
@@ -151,6 +156,8 @@ def explore_model_params(
             for _, (X, y_true, mask) in enumerate(trainloader):
 
                 y_pred = model(X.to(t_device))
+                print(f"Number of nonzero in y_pred: {y_pred.nonzero(as_tuple=False).shape[0]}")
+
                 y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true.to(t_device), mask)
                 loss = criterion(y_pred, y_true)
                 batch_r2 = r2_score(y_true.data, y_pred.data)

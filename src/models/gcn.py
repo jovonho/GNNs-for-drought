@@ -150,6 +150,7 @@ class GCN(nn.Module):
         A=None,
         device="cpu",
         verbose=False,
+        no_pooling=False,
     ):
         super().__init__()
         self.L = num_layer
@@ -157,6 +158,7 @@ class GCN(nn.Module):
         self.batch_norm = True
         self.graph_pooling = "mean"
         self.jumping_knowledge = True
+        self.no_pooling = no_pooling
 
         conv_kwargs = {
             "activation": F.elu,
@@ -177,8 +179,17 @@ class GCN(nn.Module):
         if self.jumping_knowledge:
             self.MLP_input_dim = self.MLP_input_dim + hidden_dim * (self.L - 1)
 
-        # Set the output dimension of MLP to num_nodes to predict a value for each node
-        self.MLP_layer = MLP(self.MLP_input_dim, num_nodes, [num_nodes])
+        if self.no_pooling:
+            # This makes the prediction collapse to all zeros after a couple of iterations
+            self.MLP_layer = MLP(self.MLP_input_dim, 1, [num_nodes])
+
+            # Also tried making the MLP take in the flattened node reprersentations
+            # But that array is very large and training will be very slow!
+            # self.MLP_layer = MLP(self.MLP_input_dim * num_nodes, num_nodes, [num_nodes])
+
+        else:
+            # Set the output dimension of MLP to num_nodes to predict a value for each node
+            self.MLP_layer = MLP(self.MLP_input_dim, num_nodes, [num_nodes])
 
         if A is None:
             print("We will be learning the adjancency matrix")
@@ -219,6 +230,13 @@ class GCN(nn.Module):
                 X_all_embeddings = torch.cat((X_all_embeddings, embeddings), dim=2)
 
         final_embs = X_all_embeddings if self.jumping_knowledge else embeddings
+
+        if self.no_pooling:
+            out = self.MLP_layer.forward(final_embs).squeeze()
+
+            # Option 2 with the flattened node representations - very slow
+            # out = self.MLP_layer.forward(final_embs.flatten(start_dim=1)).squeeze()
+            return out
 
         # Graph pooling, e.g. take the mean over all node embeddings (dimension=1)
         # (batch-size, out-dim)
