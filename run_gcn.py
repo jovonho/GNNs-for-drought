@@ -102,7 +102,8 @@ def explore_model_params(
         hid_dim=[100, 150, 250, 350],
         num_layer=[2],
         batch_size=[8, 16],
-        adj_learn_ts=[0, 25, 50, 100, 200, 300],
+        adj_learn_ts=[0, 25, 50, 100],
+        no_pooling=[True, False],
     )
 
     m = RunManager(val=val, verbose=verbose)
@@ -136,7 +137,7 @@ def explore_model_params(
             run.num_layer,
             adj_learn_features=adj_learn_features,
             device=device,
-            no_pooling=True,
+            no_pooling=run.no_pooling,
         )
         model.to(device)
 
@@ -212,4 +213,4 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    explore_model_params(num_epochs=1, device=device, val=True, concat_noisy_to_normal=True)
+    explore_model_params(num_epochs=50, device=device, val=False, concat_noisy_to_normal=False)

@@ -154,10 +154,11 @@ class GCN(nn.Module):
     ):
         super().__init__()
         self.L = num_layer
-        self.out_dim = self.MLP_input_dim = 100
+        self.out_dim = self.MLP_input_dim = 50
         self.batch_norm = True
         self.graph_pooling = "mean"
         self.jumping_knowledge = True
+        # self.jumping_knowledge = False
         self.no_pooling = no_pooling
 
         conv_kwargs = {
@@ -181,11 +182,12 @@ class GCN(nn.Module):
 
         if self.no_pooling:
             # This makes the prediction collapse to all zeros after a couple of iterations
-            self.MLP_layer = MLP(self.MLP_input_dim, 1, [num_nodes])
+            # self.MLP_layer = MLP(self.MLP_input_dim, 1, [num_nodes])
 
             # Also tried making the MLP take in the flattened node reprersentations
-            # But that array is very large and training will be very slow!
-            # self.MLP_layer = MLP(self.MLP_input_dim * num_nodes, num_nodes, [num_nodes])
+            # But that array is very large and training gets very slow as MLP_input_dim
+            # increases (like when using jumping knowledge) - so I reduced it from 100 to 50
+            self.MLP_layer = MLP(self.MLP_input_dim * num_nodes, num_nodes, [num_nodes])
 
         else:
             # Set the output dimension of MLP to num_nodes to predict a value for each node
@@ -232,10 +234,11 @@ class GCN(nn.Module):
         final_embs = X_all_embeddings if self.jumping_knowledge else embeddings
 
         if self.no_pooling:
-            out = self.MLP_layer.forward(final_embs).squeeze()
+            # Option 1, set MLP output dim to 1
+            # out = self.MLP_layer.forward(final_embs).squeeze()
 
-            # Option 2 with the flattened node representations - very slow
-            # out = self.MLP_layer.forward(final_embs.flatten(start_dim=1)).squeeze()
+            # Option 2 with the flattened node representations
+            out = self.MLP_layer.forward(final_embs.flatten(start_dim=1)).squeeze()
             return out
 
         # Graph pooling, e.g. take the mean over all node embeddings (dimension=1)
