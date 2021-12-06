@@ -303,8 +303,8 @@ class Dataset:
             return (
                 np.reshape(x_data, (dims[0] * dims[1], dims[2])),
                 np.reshape(target_data, (dims[0] * dims[1])),
-                np.reshape(mask, (dims[0] * dims[1]))
-                )
+                np.reshape(mask, (dims[0] * dims[1])),
+            )
         else:
             dims = x_data.shape
             x_data = torch.as_tensor(
@@ -331,7 +331,11 @@ class Dataset:
             y_list.append(y)
             mask_list.append(mask)
 
-        return np.concatenate(x_list, axis=0), np.concatenate(y_list, axis=0), np.concatenate(mask_list, axis=0)
+        return (
+            np.concatenate(x_list, axis=0),
+            np.concatenate(y_list, axis=0),
+            np.concatenate(mask_list, axis=0),
+        )
 
 
 # TODO: When running this file directly, we get an error saying No module named src
