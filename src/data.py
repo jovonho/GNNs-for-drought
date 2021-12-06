@@ -296,11 +296,15 @@ class Dataset:
 
         x_data = np.concatenate([dynamic_data, static_data], axis=-1)
         target_data, mask = self.load_target_data_for_timestep(y_timestep)
-
         # finally, flatten everything - our basic sklearn regressor
         # is going to expect a 2d input
         if self.flatten:
-            return x_data.flatten(), target_data.flatten(), mask.flatten()
+            dims = x_data.shape
+            return (
+                np.reshape(x_data, (dims[0] * dims[1], dims[2])),
+                np.reshape(target_data, (dims[0] * dims[1])),
+                np.reshape(mask, (dims[0] * dims[1]))
+                )
         else:
             dims = x_data.shape
             x_data = torch.as_tensor(
@@ -327,7 +331,7 @@ class Dataset:
             y_list.append(y)
             mask_list.append(mask)
 
-        return np.stack(x_list), np.stack(y_list), np.stack(mask_list)
+        return np.concatenate(x_list, axis=0), np.concatenate(y_list, axis=0), np.concatenate(mask_list, axis=0)
 
 
 # TODO: When running this file directly, we get an error saying No module named src
