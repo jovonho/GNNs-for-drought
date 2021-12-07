@@ -15,13 +15,14 @@ from src.models.mlp import MLP
 class AdjacencyLearner(nn.Module):
     """
     Static features here refers to the feature matrix from which we will learn A.
+    weight_dim: d_tilde_2 in Graphino
     """
 
     def __init__(
         self,
         num_nodes,
         max_num_edges,
-        dim,
+        weight_dim,
         static_features,
         device="cpu",
         alpha1=0.1,
@@ -33,8 +34,8 @@ class AdjacencyLearner(nn.Module):
             raise ValueError("Please give static node features (e.g. part of the timeseries)")
         self.num_nodes = num_nodes
         xd = static_features.shape[1]
-        self.lin1 = nn.Linear(xd, dim)
-        self.lin2 = nn.Linear(xd, dim)
+        self.lin1 = nn.Linear(xd, weight_dim)
+        self.lin2 = nn.Linear(xd, weight_dim)
 
         self.static_features = (
             static_features
@@ -44,7 +45,7 @@ class AdjacencyLearner(nn.Module):
         self.static_features = self.static_features.float().to(device)
 
         self.device = device
-        self.dim = dim
+        self.dim = weight_dim
         self.alpha1 = alpha1
         self.alpha2 = alpha2
         self.num_edges = max_num_edges
@@ -146,6 +147,9 @@ class GCN(nn.Module):
         hidden_dim,
         num_layer,
         adj_learn_features,
+        MLP_input_dim=50,
+        alpha1=0.1,
+        alpha2=2.0,
         num_nodes=1575,
         A=None,
         device="cpu",
@@ -154,11 +158,10 @@ class GCN(nn.Module):
     ):
         super().__init__()
         self.L = num_layer
-        self.out_dim = self.MLP_input_dim = 50
+        self.out_dim = self.MLP_input_dim = MLP_input_dim
         self.batch_norm = True
         self.graph_pooling = "mean"
         self.jumping_knowledge = True
-        # self.jumping_knowledge = False
         self.no_pooling = no_pooling
 
         conv_kwargs = {
@@ -176,7 +179,7 @@ class GCN(nn.Module):
 
         self.layers = nn.ModuleList(layers)
 
-        # See Appendix A for details
+        # See Graphino Appendix A for details
         if self.jumping_knowledge:
             self.MLP_input_dim = self.MLP_input_dim + hidden_dim * (self.L - 1)
 
@@ -202,11 +205,11 @@ class GCN(nn.Module):
             self.adj_learner = AdjacencyLearner(
                 num_nodes,
                 max_num_edges,
-                dim=50,
+                weight_dim=50,
                 device=device,
                 static_features=adj_learn_features,
-                alpha1=0.1,
-                alpha2=2.0,
+                alpha1=alpha1,
+                alpha2=alpha2,
                 self_loops=True,
             )
         else:

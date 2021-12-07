@@ -18,12 +18,12 @@ import warnings
 warnings.simplefilter("ignore", RuntimeWarning)
 
 
-def get_datasets(val=False, concat_noisy_to_normal=False):
+def get_datasets(val=False, concat_noisy_to_normal=False, val_ratio=0.07):
 
     if val:
         trainset = TrainValDataset(
             is_val=False,
-            val_ratio=0.07,
+            val_ratio=val_ratio,
             flatten=False,
             input_noise_scale=0.1,
             target_noise_scale=0.1,
@@ -31,7 +31,7 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
 
         valset = TrainValDataset(
             is_val=True,
-            val_ratio=0.07,
+            val_ratio=val_ratio,
             flatten=False,
             input_noise_scale=0.1,
             target_noise_scale=0.1,
@@ -56,8 +56,8 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
     # to double the number of training samples.
     if concat_noisy_to_normal:
         if val:
-            trainset_normal = TrainValDataset(is_val=False, val_ratio=0.07, flatten=False)
-            valset_normal = TrainValDataset(is_val=True, val_ratio=0.07, flatten=False)
+            trainset_normal = TrainValDataset(is_val=False, val_ratio=val_ratio, flatten=False)
+            valset_normal = TrainValDataset(is_val=True, val_ratio=val_ratio, flatten=False)
             trainset = ConcatDataset([trainset, trainset_normal])
             valset = ConcatDataset([valset, valset_normal])
             val_size += len(valset_normal)
@@ -82,28 +82,35 @@ def get_datasets(val=False, concat_noisy_to_normal=False):
 
 
 def explore_model_params(
-    num_epochs=50, device="cpu", val=False, concat_noisy_to_normal=False, verbose=True
+    num_epochs=50,
+    device="cpu",
+    val=False,
+    val_ratio=0.2,
+    concat_noisy_to_normal=False,
+    verbose=True,
 ):
     t_device = torch.device(device if (torch.cuda.is_available() and "cuda" in device) else "cpu")
 
     if concat_noisy_to_normal:
         trainset, valset, testset, adj_features_set = get_datasets(
-            val=val, concat_noisy_to_normal=concat_noisy_to_normal
+            val=val, concat_noisy_to_normal=concat_noisy_to_normal, val_ratio=val_ratio
         )
     else:
         trainset, valset, testset = get_datasets(
-            val=val, concat_noisy_to_normal=concat_noisy_to_normal
+            val=val, concat_noisy_to_normal=concat_noisy_to_normal, val_ratio=val_ratio
         )
 
     # Fill in parameters to explore
     # Will automatically explore all combinations
     params = OrderedDict(
-        lr=[0.01, 0.005, 0.001],
-        hid_dim=[100, 150, 250, 350],
+        lr=[0.01, 0.005],
+        hid_dim=[100],
         num_layer=[2],
-        batch_size=[8, 16],
-        adj_learn_ts=[0, 25, 50, 100],
-        no_pooling=[True, False],
+        adj_learn_ts=[50],
+        batch_size=[16],
+        alpha1=[0.1, 0.2],
+        alpha2=[2.0, 3.0],
+        MLP_input_dim=[5, 10, 25, 50, 75],
     )
 
     m = RunManager(val=val, verbose=verbose)
@@ -136,8 +143,8 @@ def explore_model_params(
             run.hid_dim,
             run.num_layer,
             adj_learn_features=adj_learn_features,
+            MLP_input_dim=run.MLP_input_dim,
             device=device,
-            no_pooling=run.no_pooling,
         )
         model.to(device)
 
@@ -157,9 +164,9 @@ def explore_model_params(
             for _, (X, y_true, mask) in enumerate(trainloader):
 
                 y_pred = model(X.to(t_device))
-                print(f"Number of nonzero in y_pred: {y_pred.nonzero(as_tuple=False).shape[0]}")
+                # print(f"Number of nonzero in y_pred: {y_pred.nonzero(as_tuple=False).shape[0]}")
 
-                y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true.to(t_device), mask)
+                y_true, y_pred = filter_preds_test_by_mask(y_true.to(t_device), y_pred, mask)
                 loss = criterion(y_pred, y_true)
                 batch_r2 = r2_score(y_true.data, y_pred.data)
 
@@ -180,7 +187,7 @@ def explore_model_params(
                 for _, (X, y_true, mask) in enumerate(valloader):
 
                     y_pred = model(X.to(t_device))
-                    y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true.to(t_device), mask)
+                    y_true, y_pred = filter_preds_test_by_mask(y_true.to(t_device), y_pred, mask)
                     # Multiply the MSE by each batch size, we will divide by n after
                     val_mse += mean_squared_error(y_true.data, y_pred.data) * X.shape[0]
                     val_r2.append(r2_score(y_true.data, y_pred.data))
@@ -197,7 +204,7 @@ def explore_model_params(
         for _, (X, y_true, mask) in enumerate(testloader):
 
             y_pred = model(X.to(t_device))
-            y_true, y_pred = filter_preds_test_by_mask(y_pred, y_true.to(t_device), mask)
+            y_true, y_pred = filter_preds_test_by_mask(y_true.to(t_device), y_pred, mask)
 
             test_mse += mean_squared_error(y_true.data, y_pred.data) * X.shape[0]
             test_r2.append(r2_score(y_true.data, y_pred.data))
@@ -213,4 +220,10 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    explore_model_params(num_epochs=50, device=device, val=False, concat_noisy_to_normal=False)
+    explore_model_params(
+        num_epochs=50,
+        device=device,
+        val=False,
+        val_ratio=0.2,
+        concat_noisy_to_normal=False,
+    )
